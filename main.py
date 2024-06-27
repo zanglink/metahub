@@ -1,9 +1,14 @@
 import requests
 import random
+import tkinter as tk
+from tkinter import simpledialog
 
 # URL của API để tạo bot chèn quest
 create_url = "https://dac-api.metahub.finance/eventRewardSettings/create"
 api_key = "DAC-private-private-!!!"
+
+# URL của API dừng việc chèn bot vào quest
+stop_add_bot_url = "https://dac-api.metahub.finance/eventRewardSettings/deactive"
 
 # URL của API để lấy danh sách người dùng thực
 get_users_url = "https://dac-api.metahub.finance/eventRewardSettings/realUsers"
@@ -11,15 +16,19 @@ get_users_url = "https://dac-api.metahub.finance/eventRewardSettings/realUsers"
 # URL của API để thiết lập giải thưởng ngẫu nhiên
 random_winner_url = "https://dac-api.metahub.finance/eventRewardSettings/randomWinner"
 
-# Danh sách các quest ID để tạo
-event_ids = [
-    "666a9db589d65bf7ded1d607",
-    "666aa1da89d65bf7ded1fa60"
-]
+# URL của API để chèn bot ngẫu nhiên
+add_bot_url = "https://dac-server-dev.metahub.finance/events/addBot"
 
 # Cấu hình quest ID cùng với số lượng địa chỉ cần chọn
 event_configurations = [
-    {"event_id": "6662c4235500dc41aea967db", "count": 2}
+    {"event_id": "666a974989d65bf7ded197c1", "count": 800},
+    {"event_id": "666a995389d65bf7ded1a84d", "count": 1000},
+    {"event_id": "666a9c7589d65bf7ded1c520", "count": 1000},
+    {"event_id": "666a9db589d65bf7ded1d607", "count": 400},
+    {"event_id": "666aa1da89d65bf7ded1fa60", "count": 300},
+    {"event_id": "66739b58bbf2b16c06c5dafc", "count": 200},
+    {"event_id": "6673a10fbbf2b16c06c69564", "count": 200},
+    {"event_id": "6662c6575500dc41aea97e3e", "count": 500}
 ]
 
 # Hàm để tạo bot chèn quest
@@ -93,18 +102,79 @@ def process_events(event_configurations):
         else:
             print(f"No addresses found for event {event_id}")
 
+# Hàm dừng việc chèn bot
+def stop_add_bot(event_id):
+    payload = {
+        "event": event_id,
+        "status": True
+    }
+    headers = {
+        "Content-Type": "application/json"
+    }
+    params = {
+        "key": api_key
+    }
+    response = requests.patch(stop_add_bot_url, json=payload, params=params, headers=headers)
+    
+    if response.status_code == 200:
+        print(f"Successfully stopped adding bot for event {event_id}.")
+    else:
+        print(f"Failed to stop adding bot for event {event_id}. Status code: {response.status_code}")
+        print("Error message:", response.text)
+
 # Hàm để tạo bot chèn tất cả các quest trong danh sách
-def create_all_events(event_ids):
-    for event_id in event_ids:
-        create_event(event_id)
+def create_all_events(event_configurations):
+    for config in event_configurations:
+        create_event(config["event_id"])
+
+def stop_add_bot_all_events(event_configurations):
+    for config in event_configurations:
+        stop_add_bot(config["event_id"])
+
+# Hàm để chèn bot ngẫu nhiên vào các quest
+def add_random_bot(event_id, quantity):
+    payload = {
+        "event": event_id,
+        "quantity": quantity,
+        "isContainWeb2": False
+    }
+    headers = {
+        "Content-Type": "application/json"
+    }
+    params = {
+        "key": api_key
+    }
+    response = requests.post(add_bot_url, json=payload, params=params, headers=headers)
+    
+    if response.status_code == 200:
+        print(f"Successfully added {quantity} bots to event {event_id}.")
+    else:
+        print(f"Failed to add bots to event {event_id}. Status code: {response.status_code}")
+        print("Error message:", response.text)
+
+def add_random_bot_all_events(event_configurations):
+    for config in event_configurations:
+        add_random_bot(config["event_id"], config["count"])
+
+# Hàm để hỏi người dùng lựa chọn hành động
+def ask_user_action():
+    root = tk.Tk()
+    root.withdraw()
+    action = simpledialog.askinteger("Input", "Choose action: 1 for Create All Events, 2 for Stop Add Bot All Events, 3 for Process Events, 4 for Add Random Bot All Events")
+    if action == 1:
+        create_all_events(event_configurations)
+    elif action == 2:
+        stop_add_bot_all_events(event_configurations)
+    elif action == 3:
+        process_events(event_configurations)
+    elif action == 4:
+        add_random_bot_all_events(event_configurations)
+    else:
+        print("Invalid action")
 
 # Hàm main
 def main():
-    # Tạo bot chèn các quest
-    #create_all_events(event_ids)
-    
-    # Xử lý các event để chọn địa chỉ ngẫu nhiên và thiết lập giải thưởng
-    process_events(event_configurations)
+    ask_user_action()
 
 # Gọi hàm main
 if __name__ == "__main__":
