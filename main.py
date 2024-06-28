@@ -2,6 +2,7 @@ import requests
 import random
 import tkinter as tk
 from tkinter import simpledialog
+from tkinter import ttk
 
 # URL của API để tạo bot chèn quest
 create_url = "https://dac-api.metahub.finance/eventRewardSettings/create"
@@ -17,19 +18,10 @@ get_users_url = "https://dac-api.metahub.finance/eventRewardSettings/realUsers"
 random_winner_url = "https://dac-api.metahub.finance/eventRewardSettings/randomWinner"
 
 # URL của API để chèn bot ngẫu nhiên
-add_bot_url = "https://dac-server-dev.metahub.finance/events/addBot"
+add_bot_url = "https://dac-api.metahub.finance/events/addBot"
 
-# Cấu hình quest ID cùng với số lượng địa chỉ cần chọn
-event_configurations = [
-    {"event_id": "666a974989d65bf7ded197c1", "count": 800},
-    {"event_id": "666a995389d65bf7ded1a84d", "count": 1000},
-    {"event_id": "666a9c7589d65bf7ded1c520", "count": 1000},
-    {"event_id": "666a9db589d65bf7ded1d607", "count": 400},
-    {"event_id": "666aa1da89d65bf7ded1fa60", "count": 300},
-    {"event_id": "66739b58bbf2b16c06c5dafc", "count": 200},
-    {"event_id": "6673a10fbbf2b16c06c69564", "count": 200},
-    {"event_id": "6662c6575500dc41aea97e3e", "count": 500}
-]
+# Cấu hình event ID cùng với số lượng địa chỉ cần chọn
+event_configurations = []
 
 # Hàm để tạo bot chèn quest
 def create_event(event_id):
@@ -131,11 +123,11 @@ def stop_add_bot_all_events(event_configurations):
     for config in event_configurations:
         stop_add_bot(config["event_id"])
 
-# Hàm để chèn bot ngẫu nhiên vào các quest
-def add_random_bot(event_id, quantity):
+# Hàm để chèn bot ngẫu nhiên
+def add_random_bot(event_id, count):
     payload = {
         "event": event_id,
-        "quantity": quantity,
+        "quantity": count,
         "isContainWeb2": False
     }
     headers = {
@@ -147,30 +139,71 @@ def add_random_bot(event_id, quantity):
     response = requests.post(add_bot_url, json=payload, params=params, headers=headers)
     
     if response.status_code == 200:
-        print(f"Successfully added {quantity} bots to event {event_id}.")
+        print(f"Successfully added random bot for event {event_id}.")
     else:
-        print(f"Failed to add bots to event {event_id}. Status code: {response.status_code}")
+        print(f"Failed to add random bot for event {event_id}. Status code: {response.status_code}")
         print("Error message:", response.text)
 
 def add_random_bot_all_events(event_configurations):
     for config in event_configurations:
         add_random_bot(config["event_id"], config["count"])
 
-# Hàm để hỏi người dùng lựa chọn hành động
+# Hàm để hỏi người dùng lựa chọn hành động và nhập thông tin cấu hình
 def ask_user_action():
     root = tk.Tk()
-    root.withdraw()
-    action = simpledialog.askinteger("Input", "Choose action: 1 for Create All Events, 2 for Stop Add Bot All Events, 3 for Process Events, 4 for Add Random Bot All Events")
-    if action == 1:
-        create_all_events(event_configurations)
-    elif action == 2:
-        stop_add_bot_all_events(event_configurations)
-    elif action == 3:
-        process_events(event_configurations)
-    elif action == 4:
-        add_random_bot_all_events(event_configurations)
-    else:
-        print("Invalid action")
+    root.title("Choose Action")
+    root.geometry("400x400")
+    root.configure(bg="#f0f0f0")
+    
+    action = tk.IntVar()
+    
+    label = tk.Label(root, text="Choose action:", bg="#f0f0f0", font=("Helvetica", 14))
+    label.pack(pady=10)
+    
+    style = ttk.Style()
+    style.configure("TRadiobutton", background="#f0f0f0", font=("Helvetica", 12))
+    
+    actions_frame = tk.Frame(root, bg="#f0f0f0")
+    actions_frame.pack(pady=20)
+    
+    ttk.Radiobutton(actions_frame, text="Create Bot On Top All Events", variable=action, value=1).pack(anchor=tk.W)
+    ttk.Radiobutton(actions_frame, text="Stop Add Bot All Events", variable=action, value=2).pack(anchor=tk.W)
+    ttk.Radiobutton(actions_frame, text="Random Winner All Events", variable=action, value=3).pack(anchor=tk.W)
+    ttk.Radiobutton(actions_frame, text="Add Random Bot All Events", variable=action, value=4).pack(anchor=tk.W)
+    
+    label_input = tk.Label(root, text="Enter event configurations (event_id, count) on each line:", bg="#f0f0f0", font=("Helvetica", 12))
+    label_input.pack(pady=10)
+    
+    input_text = tk.Text(root, height=10, width=50, font=("Helvetica", 10))
+    input_text.pack(pady=10)
+    
+    def on_submit():
+        input_data = input_text.get("1.0", "end-1c")
+        lines = input_data.strip().split("\n")
+        
+        global event_configurations
+        event_configurations = []
+        
+        for line in lines:
+            event_id, count = line.split(",")
+            event_configurations.append({"event_id": event_id.strip(), "count": int(count.strip())})
+        
+        if action.get() == 1:
+            create_all_events(event_configurations)
+        elif action.get() == 2:
+            stop_add_bot_all_events(event_configurations)
+        elif action.get() == 3:
+            process_events(event_configurations)
+        elif action.get() == 4:
+            add_random_bot_all_events(event_configurations)
+        else:
+            print("Invalid action")
+        root.quit()
+    
+    submit_button = tk.Button(root, text="Submit", command=on_submit, bg="#4CAF50", fg="white", font=("Helvetica", 12), width=15)
+    submit_button.pack(pady=10)
+    
+    root.mainloop()
 
 # Hàm main
 def main():
