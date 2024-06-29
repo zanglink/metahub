@@ -1,33 +1,24 @@
 import requests
 import random
 import tkinter as tk
-from tkinter import ttk, messagebox
+from tkinter import ttk
 
-# URL của API để tạo bot chèn quest
-create_url = "https://dac-api.metahub.finance/eventRewardSettings/create"
-api_key = "DAC-private-private-!!!"
+# URLs and API key
+API_KEY = "DAC-private-private-!!!"
+BASE_URL = "https://dac-api.metahub.finance/eventRewardSettings/"
+EVENT_URL = "https://dac-api.metahub.finance/events/"
+CREATE_URL = f"{BASE_URL}create"
+STOP_ADD_BOT_URL = f"{BASE_URL}deactive"
+GET_USERS_URL = f"{BASE_URL}realUsers"
+RANDOM_WINNER_URL = f"{BASE_URL}randomWinner"
+ADD_BOT_URL = f"{EVENT_URL}addBot"
 
-# URL của API dừng việc chèn bot vào quest
-stop_add_bot_url = "https://dac-api.metahub.finance/eventRewardSettings/deactive"
-
-# URL của API để lấy danh sách người dùng thực
-get_users_url = "https://dac-api.metahub.finance/eventRewardSettings/realUsers"
-
-# URL của API để thiết lập giải thưởng ngẫu nhiên
-random_winner_url = "https://dac-api.metahub.finance/eventRewardSettings/randomWinner"
-
-# URL của API để chèn bot ngẫu nhiên
-add_bot_url = "https://dac-api.metahub.finance/events/addBot"
-
-# Biến để lưu kết quả
+# Results storage
 results = []
 
-# Hàm để tạo bot chèn quest
 def create_event(event_id):
     payload = {"event": event_id}
-    headers = {"Content-Type": "application/json"}
-    params = {"key": api_key}
-    response = requests.post(create_url, json=payload, params=params, headers=headers)
+    response = requests.post(CREATE_URL, json=payload, params={"key": API_KEY}, headers={"Content-Type": "application/json"})
     
     if response.status_code == 200:
         results.append(f"Event {event_id} created successfully.")
@@ -37,10 +28,8 @@ def create_event(event_id):
         results.append(f"Error message: {response.text}")
         return None
 
-# Hàm để lấy danh sách địa chỉ người dùng từ event ID
 def get_addresses(event_id):
-    params = {"key": api_key, "event": event_id}
-    response = requests.get(get_users_url, params=params)
+    response = requests.get(GET_USERS_URL, params={"key": API_KEY, "event": event_id})
     
     if response.status_code == 200:
         data = response.json()
@@ -54,7 +43,6 @@ def get_addresses(event_id):
         results.append(f"Error message: {response.text}")
         return []
 
-# Hàm để chọn ngẫu nhiên các địa chỉ từ danh sách
 def select_random_addresses(addresses, count):
     return random.sample(addresses, count) if len(addresses) >= count else addresses
 
@@ -72,19 +60,15 @@ def replace_addresses(address_a, address_b):
     return address_b
 
 def filter_addresses(list_address_a, list_address_b):
-    # Lọc các địa chỉ trong list_address_a mà có trong list_address_b
-    filtered_address_a = [address for address in list_address_a if address in list_address_b]
-    return filtered_address_a
+    return [address for address in list_address_a if address in list_address_b]
 
-# Hàm để thiết lập giải thưởng ngẫu nhiên cho các địa chỉ đã chọn
 def set_random_winners(event_id, addresses):
     payload = {
         "event": event_id,
         "remainDistributeAll": False,
         "winnerAddresses": addresses
     }
-    headers = {"Content-Type": "application/json"}
-    response = requests.patch(random_winner_url, params={"key": api_key}, json=payload, headers=headers)
+    response = requests.patch(RANDOM_WINNER_URL, params={"key": API_KEY}, json=payload, headers={"Content-Type": "application/json"})
     
     if response.status_code == 200:
         data = response.json()
@@ -97,38 +81,24 @@ def set_random_winners(event_id, addresses):
         results.append(f"Failed to set random winners for event {event_id}. Status code: {response.status_code}")
         results.append(f"Error message: {response.text}")
 
-# Hàm để xử lý các winner cho từng quest
 def process_events(event_configurations):
     for config in event_configurations:
         event_id = config["event_id"]
         count = config["count"]
-        
-        # Lấy địa chỉ thêm từ cấu hình (nếu có)
         additional_addresses = config.get("addresses", [])
         addresses = get_addresses(event_id)
         if addresses:
-            # Thêm địa chỉ thêm vào danh sách địa chỉ
             selected_addresses = select_random_addresses(addresses, count)
             filtered_address_a = filter_addresses(additional_addresses, addresses)
-            replace_addresses(filtered_address_a, selected_addresses)
+            selected_addresses = replace_addresses(filtered_address_a, selected_addresses)
             results.append(f"Selected addresses for event {event_id}: {selected_addresses}")
             set_random_winners(event_id, selected_addresses)
         else:
             results.append(f"No addresses found for event {event_id}")
 
-# Hàm dừng việc chèn bot
 def stop_add_bot(event_id):
-    payload = {
-        "event": event_id,
-        "status": True
-    }
-    headers = {
-        "Content-Type": "application/json"
-    }
-    params = {
-        "key": api_key
-    }
-    response = requests.patch(stop_add_bot_url, json=payload, params=params, headers=headers)
+    payload = {"event": event_id, "status": True}
+    response = requests.patch(STOP_ADD_BOT_URL, json=payload, params={"key": API_KEY}, headers={"Content-Type": "application/json"})
     
     if response.status_code == 200:
         results.append(f"Successfully stopped adding bot for event {event_id}.")
@@ -136,7 +106,6 @@ def stop_add_bot(event_id):
         results.append(f"Failed to stop adding bot for event {event_id}. Status code: {response.status_code}")
         results.append(f"Error message: {response.text}")
 
-# Hàm để tạo bot chèn tất cả các quest trong danh sách
 def create_all_events(event_configurations):
     for config in event_configurations:
         create_event(config["event_id"])
@@ -145,20 +114,9 @@ def stop_add_bot_all_events(event_configurations):
     for config in event_configurations:
         stop_add_bot(config["event_id"])
 
-# Hàm để chèn bot ngẫu nhiên
 def add_random_bot(event_id, count):
-    payload = {
-        "event": event_id,
-        "quantity": count,
-        "isContainWeb2": False
-    }
-    headers = {
-        "Content-Type": "application/json"
-    }
-    params = {
-        "key": api_key
-    }
-    response = requests.post(add_bot_url, json=payload, params=params, headers=headers)
+    payload = {"event": event_id, "quantity": count, "isContainWeb2": False}
+    response = requests.post(ADD_BOT_URL, json=payload, params={"key": API_KEY}, headers={"Content-Type": "application/json"})
     
     if response.status_code == 200:
         results.append(f"Successfully added random bot for event {event_id}.")
@@ -170,7 +128,6 @@ def add_random_bot_all_events(event_configurations):
     for config in event_configurations:
         add_random_bot(config["event_id"], config["count"])
 
-# Hàm để hỏi người dùng lựa chọn hành động và nhập cấu hình
 def ask_user_action():
     root = tk.Tk()
     root.title("Choose Action")
@@ -188,6 +145,18 @@ def ask_user_action():
 
     actions_frame = tk.Frame(root, bg="#f0f0f0")
     actions_frame.pack(pady=10)
+
+    def update_placeholder(*args):
+        placeholder_text = {
+            1: "event_id",
+            2: "event_id",
+            3: "event_id, number, address_setup",
+            4: "event_id, count"
+        }.get(action.get(), "")
+        config_input.delete("1.0", tk.END)
+        config_input.insert("1.0", placeholder_text)
+
+    action.trace("w", update_placeholder)
 
     ttk.Radiobutton(actions_frame, text="Create Bot On Top All Events", variable=action, value=1).pack(anchor=tk.W)
     ttk.Radiobutton(actions_frame, text="Stop Add Bot All Events", variable=action, value=2).pack(anchor=tk.W)
@@ -213,7 +182,6 @@ def ask_user_action():
                 addresses = [addr.strip() for addr in parts[2:]] if len(parts) > 2 else []
                 event_configurations.append({"event_id": event_id, "count": count, "addresses": addresses})
 
-        
         if action.get() == 1:
             create_all_events(event_configurations)
         elif action.get() == 2:
@@ -233,7 +201,6 @@ def ask_user_action():
 
     root.mainloop()
 
-# Hàm để hiển thị kết quả sau khi hoàn thành các hành động
 def show_results():
     result_window = tk.Tk()
     result_window.title("Results")
@@ -252,5 +219,4 @@ def show_results():
 
     result_window.mainloop()
 
-# Chạy chương trình
 ask_user_action()
