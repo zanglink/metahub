@@ -71,6 +71,11 @@ def replace_addresses(address_a, address_b):
     
     return address_b
 
+def filter_addresses(list_address_a, list_address_b):
+    # Lọc các địa chỉ trong list_address_a mà có trong list_address_b
+    filtered_address_a = [address for address in list_address_a if address in list_address_b]
+    return filtered_address_a
+
 # Hàm để thiết lập giải thưởng ngẫu nhiên cho các địa chỉ đã chọn
 def set_random_winners(event_id, addresses):
     payload = {
@@ -100,15 +105,12 @@ def process_events(event_configurations):
         
         # Lấy địa chỉ thêm từ cấu hình (nếu có)
         additional_addresses = config.get("addresses", [])
-        
-        print(f"additional_addresses: {additional_addresses}")
-        
         addresses = get_addresses(event_id)
         if addresses:
             # Thêm địa chỉ thêm vào danh sách địa chỉ
-            addresses.extend(additional_addresses)
             selected_addresses = select_random_addresses(addresses, count)
-            replace_addresses(additional_addresses, selected_addresses)
+            filtered_address_a = filter_addresses(additional_addresses, addresses)
+            replace_addresses(filtered_address_a, selected_addresses)
             results.append(f"Selected addresses for event {event_id}: {selected_addresses}")
             set_random_winners(event_id, selected_addresses)
         else:
