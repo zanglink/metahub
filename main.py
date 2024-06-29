@@ -1,8 +1,7 @@
 import requests
 import random
 import tkinter as tk
-from tkinter import simpledialog
-from tkinter import ttk
+from tkinter import ttk, messagebox
 
 # URL của API để tạo bot chèn quest
 create_url = "https://dac-api.metahub.finance/eventRewardSettings/create"
@@ -20,8 +19,8 @@ random_winner_url = "https://dac-api.metahub.finance/eventRewardSettings/randomW
 # URL của API để chèn bot ngẫu nhiên
 add_bot_url = "https://dac-api.metahub.finance/events/addBot"
 
-# Cấu hình event ID cùng với số lượng địa chỉ cần chọn
-event_configurations = []
+# Biến để lưu kết quả
+results = []
 
 # Hàm để tạo bot chèn quest
 def create_event(event_id):
@@ -31,11 +30,11 @@ def create_event(event_id):
     response = requests.post(create_url, json=payload, params=params, headers=headers)
     
     if response.status_code == 200:
-        print(f"Event {event_id} created successfully.")
+        results.append(f"Event {event_id} created successfully.")
         return response.json()
     else:
-        print(f"Failed to create event {event_id}. Status code: {response.status_code}")
-        print("Error message:", response.text)
+        results.append(f"Failed to create event {event_id}. Status code: {response.status_code}")
+        results.append(f"Error message: {response.text}")
         return None
 
 # Hàm để lấy danh sách địa chỉ người dùng từ event ID
@@ -48,11 +47,11 @@ def get_addresses(event_id):
         if data['success']:
             return [user['user']['address'] for user in data['data']]
         else:
-            print(f"API response unsuccessful for event {event_id}.")
+            results.append(f"API response unsuccessful for event {event_id}.")
             return []
     else:
-        print(f"Failed to fetch data for event {event_id}. Status code: {response.status_code}")
-        print("Error message:", response.text)
+        results.append(f"Failed to fetch data for event {event_id}. Status code: {response.status_code}")
+        results.append(f"Error message: {response.text}")
         return []
 
 # Hàm để chọn ngẫu nhiên các địa chỉ từ danh sách
@@ -72,13 +71,13 @@ def set_random_winners(event_id, addresses):
     if response.status_code == 200:
         data = response.json()
         if data['success']:
-            print(f"Successfully set random winners for event {event_id}.")
+            results.append(f"Successfully set random winners for event {event_id}.")
         else:
-            print(f"Failed to set random winners for event {event_id}. Response was unsuccessful.")
-            print("Error message:", data)
+            results.append(f"Failed to set random winners for event {event_id}. Response was unsuccessful.")
+            results.append(f"Error message: {data}")
     else:
-        print(f"Failed to set random winners for event {event_id}. Status code: {response.status_code}")
-        print("Error message:", response.text)
+        results.append(f"Failed to set random winners for event {event_id}. Status code: {response.status_code}")
+        results.append(f"Error message: {response.text}")
 
 # Hàm để xử lý các winner cho từng quest
 def process_events(event_configurations):
@@ -89,10 +88,10 @@ def process_events(event_configurations):
         addresses = get_addresses(event_id)
         if addresses:
             selected_addresses = select_random_addresses(addresses, count)
-            print(f"Selected addresses for event {event_id}: {selected_addresses}")
+            results.append(f"Selected addresses for event {event_id}: {selected_addresses}")
             set_random_winners(event_id, selected_addresses)
         else:
-            print(f"No addresses found for event {event_id}")
+            results.append(f"No addresses found for event {event_id}")
 
 # Hàm dừng việc chèn bot
 def stop_add_bot(event_id):
@@ -109,10 +108,10 @@ def stop_add_bot(event_id):
     response = requests.patch(stop_add_bot_url, json=payload, params=params, headers=headers)
     
     if response.status_code == 200:
-        print(f"Successfully stopped adding bot for event {event_id}.")
+        results.append(f"Successfully stopped adding bot for event {event_id}.")
     else:
-        print(f"Failed to stop adding bot for event {event_id}. Status code: {response.status_code}")
-        print("Error message:", response.text)
+        results.append(f"Failed to stop adding bot for event {event_id}. Status code: {response.status_code}")
+        results.append(f"Error message: {response.text}")
 
 # Hàm để tạo bot chèn tất cả các quest trong danh sách
 def create_all_events(event_configurations):
@@ -139,54 +138,56 @@ def add_random_bot(event_id, count):
     response = requests.post(add_bot_url, json=payload, params=params, headers=headers)
     
     if response.status_code == 200:
-        print(f"Successfully added random bot for event {event_id}.")
+        results.append(f"Successfully added random bot for event {event_id}.")
     else:
-        print(f"Failed to add random bot for event {event_id}. Status code: {response.status_code}")
-        print("Error message:", response.text)
+        results.append(f"Failed to add random bot for event {event_id}. Status code: {response.status_code}")
+        results.append(f"Error message: {response.text}")
 
 def add_random_bot_all_events(event_configurations):
     for config in event_configurations:
         add_random_bot(config["event_id"], config["count"])
 
-# Hàm để hỏi người dùng lựa chọn hành động và nhập thông tin cấu hình
+# Hàm để hỏi người dùng lựa chọn hành động và nhập cấu hình
 def ask_user_action():
     root = tk.Tk()
     root.title("Choose Action")
-    root.geometry("400x400")
+    root.geometry("600x400")
     root.configure(bg="#f0f0f0")
-    
+    root.resizable(False, False)
+
     action = tk.IntVar()
-    
+
     label = tk.Label(root, text="Choose action:", bg="#f0f0f0", font=("Helvetica", 14))
     label.pack(pady=10)
-    
+
     style = ttk.Style()
     style.configure("TRadiobutton", background="#f0f0f0", font=("Helvetica", 12))
-    
+
     actions_frame = tk.Frame(root, bg="#f0f0f0")
-    actions_frame.pack(pady=20)
-    
+    actions_frame.pack(pady=10)
+
     ttk.Radiobutton(actions_frame, text="Create Bot On Top All Events", variable=action, value=1).pack(anchor=tk.W)
     ttk.Radiobutton(actions_frame, text="Stop Add Bot All Events", variable=action, value=2).pack(anchor=tk.W)
     ttk.Radiobutton(actions_frame, text="Random Winner All Events", variable=action, value=3).pack(anchor=tk.W)
     ttk.Radiobutton(actions_frame, text="Add Random Bot All Events", variable=action, value=4).pack(anchor=tk.W)
-    
-    label_input = tk.Label(root, text="Enter event configurations (event_id, count) on each line:", bg="#f0f0f0", font=("Helvetica", 12))
-    label_input.pack(pady=10)
-    
-    input_text = tk.Text(root, height=10, width=50, font=("Helvetica", 10))
-    input_text.pack(pady=10)
+
+    config_label = tk.Label(root, text="Enter event configurations:", bg="#f0f0f0", font=("Helvetica", 14))
+    config_label.pack(pady=10)
+
+    config_input = tk.Text(root, height=5, width=40)
+    config_input.pack(pady=10)
     
     def on_submit():
-        input_data = input_text.get("1.0", "end-1c")
-        lines = input_data.strip().split("\n")
-        
-        global event_configurations
+        config_data = config_input.get("1.0", tk.END).strip()
+        global event_configurations, results
         event_configurations = []
-        
-        for line in lines:
-            event_id, count = line.split(",")
-            event_configurations.append({"event_id": event_id.strip(), "count": int(count.strip())})
+        results = []
+        for line in config_data.split('\n'):
+            if line:
+                parts = line.split(',')
+                event_id = parts[0].strip()
+                count = int(parts[1].strip()) if len(parts) > 1 else 0
+                event_configurations.append({"event_id": event_id, "count": count})
         
         if action.get() == 1:
             create_all_events(event_configurations)
@@ -197,13 +198,33 @@ def ask_user_action():
         elif action.get() == 4:
             add_random_bot_all_events(event_configurations)
         else:
-            print("Invalid action")
+            results.append("Invalid action")
+        
+        show_results()
         root.quit()
-    
+
     submit_button = tk.Button(root, text="Submit", command=on_submit, bg="#4CAF50", fg="white", font=("Helvetica", 12), width=15)
     submit_button.pack(pady=10)
-    
+
     root.mainloop()
+
+# Hàm để hiển thị kết quả sau khi hoàn thành hành động
+def show_results():
+    result_window = tk.Tk()
+    result_window.title("Results")
+    result_window.geometry("600x400")
+    result_window.configure(bg="#f0f0f0")
+    
+    result_text = tk.Text(result_window, wrap=tk.WORD, bg="#f0f0f0", font=("Helvetica", 12))
+    result_text.pack(pady=10, padx=10, fill=tk.BOTH, expand=True)
+    
+    result_text.delete(1.0, tk.END)
+    result_text.insert(tk.END, "\n".join(results))
+    
+    close_button = tk.Button(result_window, text="Close", command=result_window.destroy, bg="#4CAF50", fg="white", font=("Helvetica", 12), width=15)
+    close_button.pack(pady=10)
+    
+    result_window.mainloop()
 
 # Hàm main
 def main():
