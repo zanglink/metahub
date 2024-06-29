@@ -58,6 +58,19 @@ def get_addresses(event_id):
 def select_random_addresses(addresses, count):
     return random.sample(addresses, count) if len(addresses) >= count else addresses
 
+def replace_addresses(address_a, address_b):
+    if not address_a:
+        return address_b
+    
+    addresses_to_replace = list(set(address_a) - set(address_b))
+    num_to_replace = min(len(addresses_to_replace), len(address_b))
+    indexes_to_replace = random.sample(range(len(address_b)), num_to_replace)
+    
+    for i, index in enumerate(indexes_to_replace):
+        address_b[index] = addresses_to_replace[i]
+    
+    return address_b
+
 # Hàm để thiết lập giải thưởng ngẫu nhiên cho các địa chỉ đã chọn
 def set_random_winners(event_id, addresses):
     payload = {
@@ -85,9 +98,17 @@ def process_events(event_configurations):
         event_id = config["event_id"]
         count = config["count"]
         
+        # Lấy địa chỉ thêm từ cấu hình (nếu có)
+        additional_addresses = config.get("addresses", [])
+        
+        print(f"additional_addresses: {additional_addresses}")
+        
         addresses = get_addresses(event_id)
         if addresses:
+            # Thêm địa chỉ thêm vào danh sách địa chỉ
+            addresses.extend(additional_addresses)
             selected_addresses = select_random_addresses(addresses, count)
+            replace_addresses(additional_addresses, selected_addresses)
             results.append(f"Selected addresses for event {event_id}: {selected_addresses}")
             set_random_winners(event_id, selected_addresses)
         else:
@@ -187,7 +208,9 @@ def ask_user_action():
                 parts = line.split(',')
                 event_id = parts[0].strip()
                 count = int(parts[1].strip()) if len(parts) > 1 else 0
-                event_configurations.append({"event_id": event_id, "count": count})
+                addresses = [addr.strip() for addr in parts[2:]] if len(parts) > 2 else []
+                event_configurations.append({"event_id": event_id, "count": count, "addresses": addresses})
+
         
         if action.get() == 1:
             create_all_events(event_configurations)
@@ -208,28 +231,24 @@ def ask_user_action():
 
     root.mainloop()
 
-# Hàm để hiển thị kết quả sau khi hoàn thành hành động
+# Hàm để hiển thị kết quả sau khi hoàn thành các hành động
 def show_results():
     result_window = tk.Tk()
     result_window.title("Results")
     result_window.geometry("600x400")
     result_window.configure(bg="#f0f0f0")
-    
+    result_window.resizable(False, False)
+
     result_text = tk.Text(result_window, wrap=tk.WORD, bg="#f0f0f0", font=("Helvetica", 12))
-    result_text.pack(pady=10, padx=10, fill=tk.BOTH, expand=True)
-    
-    result_text.delete(1.0, tk.END)
-    result_text.insert(tk.END, "\n".join(results))
-    
+    result_text.pack(pady=10, padx=10)
+
+    for result in results:
+        result_text.insert(tk.END, result + "\n")
+
     close_button = tk.Button(result_window, text="Close", command=result_window.destroy, bg="#4CAF50", fg="white", font=("Helvetica", 12), width=15)
     close_button.pack(pady=10)
-    
+
     result_window.mainloop()
 
-# Hàm main
-def main():
-    ask_user_action()
-
-# Gọi hàm main
-if __name__ == "__main__":
-    main()
+# Chạy chương trình
+ask_user_action()
