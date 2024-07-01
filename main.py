@@ -1,7 +1,9 @@
 import requests
 import random
 import tkinter as tk
-from tkinter import ttk
+from tkinter import ttk, messagebox
+import pandas as pd
+from datetime import datetime
 
 # URLs and API key
 API_KEY = "DAC-private-private-!!!"
@@ -12,6 +14,7 @@ STOP_ADD_BOT_URL = f"{BASE_URL}deactive"
 GET_USERS_URL = f"{BASE_URL}realUsers"
 RANDOM_WINNER_URL = f"{BASE_URL}randomWinner"
 ADD_BOT_URL = f"{EVENT_URL}addBot"
+REFUND_REWARD_URL = f"{BASE_URL}refundReward"
 
 # Results storage
 results = []
@@ -128,6 +131,68 @@ def add_random_bot_all_events(event_configurations):
     for config in event_configurations:
         add_random_bot(config["event_id"], config["count"])
 
+def format_date(date_str):
+    return datetime.strptime(date_str, '%Y-%m-%d').strftime('%Y-%m-%dT00:00:00.000Z')
+
+def export_refund_reward_to_excel(event, from_date, to_date):
+    params = {
+        "from": format_date(from_date),
+        "to": format_date(to_date),
+        "key": API_KEY
+    }
+    
+    if event:
+        params["events"] = event
+    
+    response = requests.get(REFUND_REWARD_URL, params=params)
+    
+    if response.status_code == 200:
+        try:
+            data = response.json().get('data', [])
+            if data:
+                rows = []
+                for event_data in data:
+                    event_id = event_data.get('event', '')
+                    event_title = event_data.get('title', '')
+                    token = event_data.get('token', '')
+                    chain = event_data.get('chain', '')
+                    top_bonus = event_data.get('topBonusNumber', 0)
+                    random_bonus = event_data.get('randomBonusNumber', 0)
+                    total_fund_amount = event_data.get('totalFundTokenAmount', 0)
+                    total_refund_amount = event_data.get('totalRefundAmount', 0)
+                    total_user_reward = event_data.get('totalUserReward', 0)
+                    total_bot_refund = event_data.get('totalBotRefund', 0)
+                    
+                    random_winners = [user['address'] for user in event_data.get('randomWinnerUsers', [])]
+                    
+                    for winner in random_winners:
+                        rows.append({
+                            'Event ID': event_id,
+                            'Event Title': event_title,
+                            'Token': token,
+                            'Chain': chain,
+                            'Top Bonus Number': top_bonus,
+                            'Random Bonus Number': random_bonus,
+                            'Total Fund Token Amount': total_fund_amount,
+                            'Total Refund Amount': total_refund_amount,
+                            'Total User Reward': total_user_reward,
+                            'Total Bot Refund': total_bot_refund,
+                            'Random Winner Address': winner
+                        })
+                
+                df = pd.DataFrame(rows)
+                file_name = f"refund_reward_{event or 'all_events'}_{from_date}_{to_date}.xlsx"
+                df.to_excel(file_name, index=False)
+                
+                results.append(f"Data has been saved to {file_name}")
+            else:
+                results.append("No data found for the given parameters.")
+        except Exception as e:
+            results.append(f"Error processing data: {str(e)}")
+    else:
+        results.append(f"Failed to fetch refund reward data. Status code: {response.status_code}")
+        results.append(f"Error message: {response.text}")
+
 def ask_user_action():
     root = tk.Tk()
     root.title("Choose Action")
@@ -151,7 +216,8 @@ def ask_user_action():
             1: "event_id",
             2: "event_id",
             3: "event_id, number, address_setup",
-            4: "event_id, count"
+            4: "event_id, count",
+            5: "event, from, to"
         }.get(action.get(), "")
         config_input.delete("1.0", tk.END)
         config_input.insert("1.0", placeholder_text)
@@ -162,6 +228,7 @@ def ask_user_action():
     ttk.Radiobutton(actions_frame, text="Stop Add Bot All Events", variable=action, value=2).pack(anchor=tk.W)
     ttk.Radiobutton(actions_frame, text="Random Winner All Events", variable=action, value=3).pack(anchor=tk.W)
     ttk.Radiobutton(actions_frame, text="Add Random Bot All Events", variable=action, value=4).pack(anchor=tk.W)
+    ttk.Radiobutton(actions_frame, text="Export refund Reward to Excel", variable=action, value=5).pack(anchor=tk.W)
 
     config_label = tk.Label(root, text="Enter event configurations:", bg="#f0f0f0", font=("Helvetica", 14))
     config_label.pack(pady=10)
@@ -174,24 +241,35 @@ def ask_user_action():
         global event_configurations, results
         event_configurations = []
         results = []
-        for line in config_data.split('\n'):
-            if line:
-                parts = line.split(',')
-                event_id = parts[0].strip()
-                count = int(parts[1].strip()) if len(parts) > 1 else 0
-                addresses = [addr.strip() for addr in parts[2:]] if len(parts) > 2 else []
-                event_configurations.append({"event_id": event_id, "count": count, "addresses": addresses})
-
-        if action.get() == 1:
-            create_all_events(event_configurations)
-        elif action.get() == 2:
-            stop_add_bot_all_events(event_configurations)
-        elif action.get() == 3:
-            process_events(event_configurations)
-        elif action.get() == 4:
-            add_random_bot_all_events(event_configurations)
+        
+        if action.get() == 5:
+            parts = config_data.split(',')
+            if len(parts) != 3:
+                messagebox.showerror("Input Error", "Please provide event, from, and to dates in the format 'event, from, to'.")
+                return
+            event = parts[0].strip()
+            from_date = parts[1].strip()
+            to_date = parts[2].strip()
+            export_refund_reward_to_excel(event, from_date, to_date)
         else:
-            results.append("Invalid action")
+            for line in config_data.split('\n'):
+                if line:
+                    parts = line.split(',')
+                    event_id = parts[0].strip()
+                    count = int(parts[1].strip()) if len(parts) > 1 else 0
+                    addresses = [addr.strip() for addr in parts[2:]] if len(parts) > 2 else []
+                    event_configurations.append({"event_id": event_id, "count": count, "addresses": addresses})
+
+            if action.get() == 1:
+                create_all_events(event_configurations)
+            elif action.get() == 2:
+                stop_add_bot_all_events(event_configurations)
+            elif action.get() == 3:
+                process_events(event_configurations)
+            elif action.get() == 4:
+                add_random_bot_all_events(event_configurations)
+            else:
+                results.append("Invalid action")
         
         show_results()
         root.quit()
