@@ -152,9 +152,12 @@ def export_refund_reward_to_excel(event, from_date, to_date):
             if data:
                 rows = []
                 for event_data in data:
+                    token = event_data.get('token', '')
+                    if token != "MEN":
+                        continue
+
                     event_id = event_data.get('event', '')
                     event_title = event_data.get('title', '')
-                    token = event_data.get('token', '')
                     chain = event_data.get('chain', '')
                     top_bonus = event_data.get('topBonusNumber', 0)
                     random_bonus = event_data.get('randomBonusNumber', 0)
@@ -164,21 +167,21 @@ def export_refund_reward_to_excel(event, from_date, to_date):
                     total_bot_refund = event_data.get('totalBotRefund', 0)
                     
                     random_winners = [user['address'] for user in event_data.get('randomWinnerUsers', [])]
+                    random_winners_str = ", ".join(random_winners)
                     
-                    for winner in random_winners:
-                        rows.append({
-                            'Event ID': event_id,
-                            'Event Title': event_title,
-                            'Token': token,
-                            'Chain': chain,
-                            'Top Bonus Number': top_bonus,
-                            'Random Bonus Number': random_bonus,
-                            'Total Fund Token Amount': total_fund_amount,
-                            'Total Refund Amount': total_refund_amount,
-                            'Total User Reward': total_user_reward,
-                            'Total Bot Refund': total_bot_refund,
-                            'Random Winner Address': winner
-                        })
+                    rows.append({
+                        'Event ID': event_id,
+                        'Event Title': event_title,
+                        'Token': token,
+                        'Chain': chain,
+                        'Top Bonus Number': top_bonus,
+                        'Random Bonus Number': random_bonus,
+                        'Total Fund Token Amount': total_fund_amount,
+                        'Total Refund Amount': total_refund_amount,
+                        'Total User Reward': total_user_reward,
+                        'Total Bot Refund': total_bot_refund,
+                        'Random Winner Addresses': random_winners_str
+                    })
                 
                 df = pd.DataFrame(rows)
                 file_name = f"refund_reward_{event or 'all_events'}_{from_date}_{to_date}.xlsx"
@@ -192,6 +195,7 @@ def export_refund_reward_to_excel(event, from_date, to_date):
     else:
         results.append(f"Failed to fetch refund reward data. Status code: {response.status_code}")
         results.append(f"Error message: {response.text}")
+
 
 def ask_user_action():
     root = tk.Tk()
