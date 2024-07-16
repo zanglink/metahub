@@ -1,4 +1,5 @@
 import requests
+import json
 import random
 import tkinter as tk
 from tkinter import ttk, messagebox
@@ -9,12 +10,15 @@ from datetime import datetime
 API_KEY = "DAC-private-private-!!!"
 BASE_URL = "https://dac-api.metahub.finance/eventRewardSettings/"
 EVENT_URL = "https://dac-api.metahub.finance/events/"
+COMMUNITY_URL = "https://dac-api.metahub.finance/communities/"
 CREATE_URL = f"{BASE_URL}create"
 STOP_ADD_BOT_URL = f"{BASE_URL}deactive"
 GET_USERS_URL = f"{BASE_URL}realUsers"
 RANDOM_WINNER_URL = f"{BASE_URL}randomWinner"
 ADD_BOT_URL = f"{EVENT_URL}addBot"
 REFUND_REWARD_URL = f"{BASE_URL}refundReward"
+EDIT_USER_COMMUNITY_URL = f"{COMMUNITY_URL}private/manager"
+CHECK_POINT = f"{EVENT_URL}private/userPoint"
 
 # Results storage
 results = []
@@ -118,14 +122,22 @@ def stop_add_bot_all_events(event_configurations):
         stop_add_bot(config["event_id"])
 
 def add_random_bot(event_id, count):
-    payload = {"event": event_id, "quantity": count, "isContainWeb2": False}
-    response = requests.post(ADD_BOT_URL, json=payload, params={"key": API_KEY}, headers={"Content-Type": "application/json"})
+    chunk_size = 10
+    num_chunks = (count + chunk_size - 1) // chunk_size
     
-    if response.status_code == 200:
-        results.append(f"Successfully added random bot for event {event_id}.")
-    else:
-        results.append(f"Failed to add random bot for event {event_id}. Status code: {response.status_code}")
-        results.append(f"Error message: {response.text}")
+    for _ in range(num_chunks):
+        current_chunk_size = min(chunk_size, count)
+        payload = {"event": event_id, "quantity": current_chunk_size, "isContainWeb2": False}
+        response = requests.post(ADD_BOT_URL, json=payload, params={"key": API_KEY}, headers={"Content-Type": "application/json"})
+        
+        if response.status_code == 200:
+            results.append(f"Successfully added {current_chunk_size} random bots for event {event_id}.")
+        else:
+            results.append(f"Failed to add {current_chunk_size} random bots for event {event_id}. Status code: {response.status_code}")
+            results.append(f"Error message: {response.text}")
+        
+        count -= current_chunk_size
+
 
 def add_random_bot_all_events(event_configurations):
     for config in event_configurations:
@@ -152,9 +164,12 @@ def export_refund_reward_to_excel(event, from_date, to_date):
             if data:
                 rows = []
                 for event_data in data:
+                    token = event_data.get('token', '')
+                    if token == "MEN":
+                        continue
+
                     event_id = event_data.get('event', '')
                     event_title = event_data.get('title', '')
-                    token = event_data.get('token', '')
                     chain = event_data.get('chain', '')
                     top_bonus = event_data.get('topBonusNumber', 0)
                     random_bonus = event_data.get('randomBonusNumber', 0)
@@ -164,21 +179,21 @@ def export_refund_reward_to_excel(event, from_date, to_date):
                     total_bot_refund = event_data.get('totalBotRefund', 0)
                     
                     random_winners = [user['address'] for user in event_data.get('randomWinnerUsers', [])]
+                    random_winners_str = ", ".join(random_winners)
                     
-                    for winner in random_winners:
-                        rows.append({
-                            'Event ID': event_id,
-                            'Event Title': event_title,
-                            'Token': token,
-                            'Chain': chain,
-                            'Top Bonus Number': top_bonus,
-                            'Random Bonus Number': random_bonus,
-                            'Total Fund Token Amount': total_fund_amount,
-                            'Total Refund Amount': total_refund_amount,
-                            'Total User Reward': total_user_reward,
-                            'Total Bot Refund': total_bot_refund,
-                            'Random Winner Address': winner
-                        })
+                    rows.append({
+                        'Event ID': event_id,
+                        'Event Title': event_title,
+                        'Token': token,
+                        'Chain': chain,
+                        'Top Bonus Number': top_bonus,
+                        'Random Bonus Number': random_bonus,
+                        'Total Fund Token Amount': total_fund_amount,
+                        'Total Refund Amount': total_refund_amount,
+                        'Total User Reward': total_user_reward,
+                        'Total Bot Refund': total_bot_refund,
+                        'Random Winner Addresses': random_winners_str
+                    })
                 
                 df = pd.DataFrame(rows)
                 file_name = f"refund_reward_{event or 'all_events'}_{from_date}_{to_date}.xlsx"
@@ -193,10 +208,58 @@ def export_refund_reward_to_excel(event, from_date, to_date):
         results.append(f"Failed to fetch refund reward data. Status code: {response.status_code}")
         results.append(f"Error message: {response.text}")
 
+def edit_manager_to_community(user, community, action):
+    payload = {
+        "user": user,
+        "community": community
+    }
+    if action == "add":
+        response = requests.post(EDIT_USER_COMMUNITY_URL, json=payload, params={"key": API_KEY}, headers={"Content-Type": "application/json"})
+    else:
+        response = requests.delete(EDIT_USER_COMMUNITY_URL, json=payload, params={"key": API_KEY}, headers={"Content-Type": "application/json"})
+
+    if response.status_code == 200:
+        data = response.json()
+        if data['success']:
+            results.append(f"Successfully edited manager {user} to community {community}.")
+        else:
+            results.append(f"Failed to edit manager {user} to community {community}. Response was unsuccessful.")
+            results.append(f"Error message: {data}")
+    else:
+        results.append(f"Failed to edit manager {user} to community {community}. Status code: {response.status_code}")
+        results.append(f"Error message: {response.text}")
+
+def check_point_user(user, event_id):
+    payload = {
+        "user": user,
+        "event": event_id,
+        "key": API_KEY
+    }
+    response = requests.get(CHECK_POINT, params=payload, headers={"Content-Type": "application/json"})
+    
+    if response.status_code == 200:
+        data = response.json()
+        if data['success']:
+            points = data.get('points', 'No points information available')
+            result_data = {
+                "user": user,
+                "event": event_id,
+                "points": points
+            }
+            file_name = f"user_points_{user}_{event_id}.json"
+            with open(file_name, 'w') as f:
+                json.dump(result_data, f, indent=4)
+            messagebox.showinfo("Success", f"Data has been saved to {file_name}")
+        else:
+            messagebox.showerror("Error", f"Failed to retrieve points. Response was unsuccessful.\n{data}")
+    else:
+        messagebox.showerror("Error", f"Failed to retrieve points. Status code: {response.status_code}\n{response.text}")
+
+
 def ask_user_action():
     root = tk.Tk()
     root.title("Choose Action")
-    root.geometry("600x400")
+    root.geometry("600x700")
     root.configure(bg="#f0f0f0")
     root.resizable(False, False)
 
@@ -208,8 +271,15 @@ def ask_user_action():
     style = ttk.Style()
     style.configure("TRadiobutton", background="#f0f0f0", font=("Helvetica", 12))
 
-    actions_frame = tk.Frame(root, bg="#f0f0f0")
-    actions_frame.pack(pady=10)
+    # Frames for different action groups
+    event_actions_frame = tk.LabelFrame(root, text="Action to Event", bg="#f0f0f0", font=("Helvetica", 14), padx=10, pady=10)
+    event_actions_frame.pack(pady=10, fill="x")
+
+    excel_actions_frame = tk.LabelFrame(root, text="Result to Excel", bg="#f0f0f0", font=("Helvetica", 14), padx=10, pady=10)
+    excel_actions_frame.pack(pady=10, fill="x")
+
+    community_actions_frame = tk.LabelFrame(root, text="Action to Community", bg="#f0f0f0", font=("Helvetica", 14), padx=10, pady=10)
+    community_actions_frame.pack(pady=10, fill="x")
 
     def update_placeholder(*args):
         placeholder_text = {
@@ -217,25 +287,35 @@ def ask_user_action():
             2: "event_id",
             3: "event_id, number, address_setup",
             4: "event_id, count",
-            5: "event, from, to"
+            5: "event, from, to",
+            6: "user, community", 
+            7: "user, community",
+            8: "user, event_id"
         }.get(action.get(), "")
         config_input.delete("1.0", tk.END)
         config_input.insert("1.0", placeholder_text)
 
     action.trace("w", update_placeholder)
 
-    ttk.Radiobutton(actions_frame, text="Create Bot On Top All Events", variable=action, value=1).pack(anchor=tk.W)
-    ttk.Radiobutton(actions_frame, text="Stop Add Bot All Events", variable=action, value=2).pack(anchor=tk.W)
-    ttk.Radiobutton(actions_frame, text="Random Winner All Events", variable=action, value=3).pack(anchor=tk.W)
-    ttk.Radiobutton(actions_frame, text="Add Random Bot All Events", variable=action, value=4).pack(anchor=tk.W)
-    ttk.Radiobutton(actions_frame, text="Export refund Reward to Excel", variable=action, value=5).pack(anchor=tk.W)
+    # Event Actions
+    ttk.Radiobutton(event_actions_frame, text="Create Bot On Top All Events", variable=action, value=1).pack(anchor=tk.W)
+    ttk.Radiobutton(event_actions_frame, text="Stop Add Bot All Events", variable=action, value=2).pack(anchor=tk.W)
+    ttk.Radiobutton(event_actions_frame, text="Random Winner All Events", variable=action, value=3).pack(anchor=tk.W)
+    ttk.Radiobutton(event_actions_frame, text="Add Random Bot All Events", variable=action, value=4).pack(anchor=tk.W)
+
+    # Excel Actions
+    ttk.Radiobutton(excel_actions_frame, text="Check Point User", variable=action, value=8).pack(anchor=tk.W)
+    ttk.Radiobutton(excel_actions_frame, text="Export refund Reward to Excel", variable=action, value=5).pack(anchor=tk.W)
+
+    # Community Actions
+    ttk.Radiobutton(community_actions_frame, text="Add manager to Community", variable=action, value=6).pack(anchor=tk.W)
+    ttk.Radiobutton(community_actions_frame, text="Delete manager to Community", variable=action, value=7).pack(anchor=tk.W)
 
     config_label = tk.Label(root, text="Enter event configurations:", bg="#f0f0f0", font=("Helvetica", 14))
     config_label.pack(pady=10)
 
     config_input = tk.Text(root, height=5, width=40)
     config_input.pack(pady=10)
-    
     def on_submit():
         config_data = config_input.get("1.0", tk.END).strip()
         global event_configurations, results
@@ -251,6 +331,30 @@ def ask_user_action():
             from_date = parts[1].strip()
             to_date = parts[2].strip()
             export_refund_reward_to_excel(event, from_date, to_date)
+        elif action.get() == 6: 
+            parts = config_data.split(',')
+            if len(parts) != 2:
+                messagebox.showerror("Input Error", "Please provide user and community in the format 'user, community'.")
+                return
+            user = parts[0].strip()
+            community = parts[1].strip()
+            edit_manager_to_community(user, community, "add")
+        elif action.get() == 7:
+            parts = config_data.split(',')
+            if len(parts) != 2:
+                messagebox.showerror("Input Error", "Please provide user and community in the format 'user, community'.")
+                return
+            user = parts[0].strip()
+            community = parts[1].strip()
+            edit_manager_to_community(user, community, "delete")
+        elif action.get() == 8:  # Action for checking user points
+            parts = config_data.split(',')
+            if len(parts) != 2:
+                messagebox.showerror("Input Error", "Please provide user and event in the format 'user, event'.")
+                return
+            user = parts[0].strip()
+            event_id = parts[1].strip()
+            check_point_user(user, event_id)
         else:
             for line in config_data.split('\n'):
                 if line:
