@@ -165,7 +165,11 @@ def export_refund_reward_to_excel(event, from_date, to_date):
                 rows = []
                 for event_data in data:
                     token = event_data.get('token', '')
+<<<<<<< HEAD
                     if token == "MEN":
+=======
+                    if token != "MEN":
+>>>>>>> 6d0ddc4318843cd8bd22ea023ce84aaf467bbb8b
                         continue
 
                     event_id = event_data.get('event', '')
@@ -208,6 +212,7 @@ def export_refund_reward_to_excel(event, from_date, to_date):
         results.append(f"Failed to fetch refund reward data. Status code: {response.status_code}")
         results.append(f"Error message: {response.text}")
 
+<<<<<<< HEAD
 def edit_manager_to_community(user, community, action):
     payload = {
         "user": user,
@@ -255,6 +260,8 @@ def check_point_user(user, event_id):
     else:
         messagebox.showerror("Error", f"Failed to retrieve points. Status code: {response.status_code}\n{response.text}")
 
+=======
+>>>>>>> 6d0ddc4318843cd8bd22ea023ce84aaf467bbb8b
 
 def ask_user_action():
     root = tk.Tk()
