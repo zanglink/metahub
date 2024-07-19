@@ -146,7 +146,7 @@ def add_random_bot_all_events(event_configurations):
 def format_date(date_str):
     return datetime.strptime(date_str, '%Y-%m-%d').strftime('%Y-%m-%dT00:00:00.000Z')
 
-def export_refund_reward_to_excel(event, from_date, to_date):
+def export_refund_reward_to_excel(event, from_date, to_date, type_token):
     params = {
         "from": format_date(from_date),
         "to": format_date(to_date),
@@ -165,11 +165,9 @@ def export_refund_reward_to_excel(event, from_date, to_date):
                 rows = []
                 for event_data in data:
                     token = event_data.get('token', '')
-<<<<<<< HEAD
-                    if token == "MEN":
-=======
-                    if token != "MEN":
->>>>>>> 6d0ddc4318843cd8bd22ea023ce84aaf467bbb8b
+                    if type_token == "MEN" and token == "MEN":
+                        continue
+                    elif type_token != "MEN" and token != "MEN":
                         continue
 
                     event_id = event_data.get('event', '')
@@ -212,7 +210,84 @@ def export_refund_reward_to_excel(event, from_date, to_date):
         results.append(f"Failed to fetch refund reward data. Status code: {response.status_code}")
         results.append(f"Error message: {response.text}")
 
-<<<<<<< HEAD
+def export_random_winners_to_excel(event, from_date, to_date, type_token):
+    params = {
+        "from": format_date(from_date),
+        "to": format_date(to_date),
+        "key": API_KEY
+    }
+    
+    if event:
+        params["events"] = event
+    
+    response = requests.get(REFUND_REWARD_URL, params=params)
+    
+    if response.status_code == 200:
+        try:
+            data = response.json().get('data', [])
+            if data:
+                rows = []
+                counter = 1  # Initialize the counter
+                for event_data in data:
+                    token = event_data.get('token', '')
+                    if type_token == "MEN" and token != "MEN":
+                        continue
+                    elif type_token != "MEN" and token == "MEN":
+                        continue
+
+                    event_id = event_data.get('event', '')
+                    random_bonus = event_data.get('randomBonusNumber', 0)
+                    random_winners = [user['address'] for user in event_data.get('randomWinnerUsers', [])]
+
+                    for winner in random_winners:
+                        rows.append({
+                            '#': counter,  # Add the counter value
+                            'Event ID': event_id,
+                            'Random Winner Address': winner,
+                            'Token': token,
+                            'Random Bonus Number': random_bonus
+                        })
+                        counter += 1  # Increment the counter for each winner
+                
+                df = pd.DataFrame(rows)
+                file_name = f"random_winners_{event or 'all_events'}_{from_date}_{to_date}.xlsx"
+                df.to_excel(file_name, index=False)
+                
+                print(f"Data has been saved to {file_name}")
+            else:
+                print("No data found for the given parameters.")
+        except Exception as e:
+            print(f"Error processing data: {str(e)}")
+    else:
+        print(f"Failed to fetch refund reward data. Status code: {response.status_code}")
+        print(f"Error message: {response.text}")
+
+def export_address_counts_to_excel(event_configurations):
+    event_ids = [event['event_id'] for event in event_configurations]
+    data = []
+
+    for event_id in event_ids:
+        response = requests.get(GET_USERS_URL, params={"key": API_KEY, "event": event_id})
+        
+        if response.status_code == 200:
+            data_response = response.json()
+            if data_response['success']:
+                address_count = len([user['user']['address'] for user in data_response['data']])
+                data.append({'#': len(data) + 1, 'event_id': event_id, 'count': address_count})
+            else:
+                results.append(f"API response unsuccessful for event {event_id}.")
+        else:
+            results.append(f"Failed to fetch data for event {event_id}. Status code: {response.status_code}")
+            results.append(f"Error message: {response.text}")
+
+    if data:
+        df = pd.DataFrame(data)
+        file_name = "address_counts.xlsx"
+        df.to_excel(file_name, index=False)
+        results.append(f"Data has been saved to {file_name}")
+    else:
+        results.append("No data to export.")
+
 def edit_manager_to_community(user, community, action):
     payload = {
         "user": user,
@@ -260,8 +335,6 @@ def check_point_user(user, event_id):
     else:
         messagebox.showerror("Error", f"Failed to retrieve points. Status code: {response.status_code}\n{response.text}")
 
-=======
->>>>>>> 6d0ddc4318843cd8bd22ea023ce84aaf467bbb8b
 
 def ask_user_action():
     root = tk.Tk()
@@ -294,10 +367,12 @@ def ask_user_action():
             2: "event_id",
             3: "event_id, number, address_setup",
             4: "event_id, count",
-            5: "event, from, to",
+            5: "event, from, to, token",
             6: "user, community", 
             7: "user, community",
-            8: "user, event_id"
+            8: "user, event_id",
+            9: "event, from, to, token",
+            10: "event_id"
         }.get(action.get(), "")
         config_input.delete("1.0", tk.END)
         config_input.insert("1.0", placeholder_text)
@@ -313,6 +388,8 @@ def ask_user_action():
     # Excel Actions
     ttk.Radiobutton(excel_actions_frame, text="Check Point User", variable=action, value=8).pack(anchor=tk.W)
     ttk.Radiobutton(excel_actions_frame, text="Export refund Reward to Excel", variable=action, value=5).pack(anchor=tk.W)
+    ttk.Radiobutton(excel_actions_frame, text="Export Random Winner to Excel", variable=action, value=9).pack(anchor=tk.W)
+    ttk.Radiobutton(excel_actions_frame, text="Export Address Count to Excel", variable=action, value=10).pack(anchor=tk.W)
 
     # Community Actions
     ttk.Radiobutton(community_actions_frame, text="Add manager to Community", variable=action, value=6).pack(anchor=tk.W)
@@ -329,40 +406,44 @@ def ask_user_action():
         event_configurations = []
         results = []
         
-        if action.get() == 5:
-            parts = config_data.split(',')
-            if len(parts) != 3:
-                messagebox.showerror("Input Error", "Please provide event, from, and to dates in the format 'event, from, to'.")
+        config_parts = config_data.split(',')
+
+        if action.get() in [5, 9]:
+            if len(config_parts) != 4:
+                messagebox.showerror("Input Error", "Please provide event, from, to dates, and token type in the format 'event, from, to, token_type'.")
                 return
-            event = parts[0].strip()
-            from_date = parts[1].strip()
-            to_date = parts[2].strip()
-            export_refund_reward_to_excel(event, from_date, to_date)
-        elif action.get() == 6: 
-            parts = config_data.split(',')
-            if len(parts) != 2:
+
+            event = config_parts[0].strip()
+            from_date = config_parts[1].strip()
+            to_date = config_parts[2].strip()
+            type_token = config_parts[3].strip()
+
+            if action.get() == 5:
+                export_refund_reward_to_excel(event, from_date, to_date, type_token)
+            else:
+                export_random_winners_to_excel(event, from_date, to_date, type_token)
+
+        elif action.get() in [6, 7]:
+            if len(config_parts) != 2:
                 messagebox.showerror("Input Error", "Please provide user and community in the format 'user, community'.")
                 return
-            user = parts[0].strip()
-            community = parts[1].strip()
-            edit_manager_to_community(user, community, "add")
-        elif action.get() == 7:
-            parts = config_data.split(',')
-            if len(parts) != 2:
-                messagebox.showerror("Input Error", "Please provide user and community in the format 'user, community'.")
-                return
-            user = parts[0].strip()
-            community = parts[1].strip()
-            edit_manager_to_community(user, community, "delete")
-        elif action.get() == 8:  # Action for checking user points
-            parts = config_data.split(',')
-            if len(parts) != 2:
+
+            user = config_parts[0].strip()
+            community = config_parts[1].strip()
+            action_type = "add" if action.get() == 6 else "delete"
+            edit_manager_to_community(user, community, action_type)
+
+        elif action.get() == 8:
+            if len(config_parts) != 2:
                 messagebox.showerror("Input Error", "Please provide user and event in the format 'user, event'.")
                 return
-            user = parts[0].strip()
-            event_id = parts[1].strip()
+
+            user = config_parts[0].strip()
+            event_id = config_parts[1].strip()
             check_point_user(user, event_id)
+
         else:
+            event_configurations = []
             for line in config_data.split('\n'):
                 if line:
                     parts = line.split(',')
@@ -379,9 +460,11 @@ def ask_user_action():
                 process_events(event_configurations)
             elif action.get() == 4:
                 add_random_bot_all_events(event_configurations)
+            elif action.get() == 10:
+                export_address_counts_to_excel(event_configurations)
             else:
                 results.append("Invalid action")
-        
+
         show_results()
         root.quit()
 
