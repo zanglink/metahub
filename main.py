@@ -146,6 +146,15 @@ def add_random_bot_all_events(event_configurations):
 def format_date(date_str):
     return datetime.strptime(date_str, '%Y-%m-%d').strftime('%Y-%m-%dT00:00:00.000Z')
 
+def calculate_percentage(a, b):
+    try:
+        # Tính % của a trên b và làm tròn đến 2 chữ số thập phân
+        percentage = round((a / b) * 100, 2)
+        return percentage
+    except (ZeroDivisionError, TypeError):
+        # Nếu xảy ra lỗi chia cho 0 hoặc giá trị không hợp lệ, trả về 0
+        return 0
+
 def export_refund_reward_to_excel(event, from_date, to_date, type_token):
     params = {
         "from": format_date(from_date),
@@ -163,42 +172,37 @@ def export_refund_reward_to_excel(event, from_date, to_date, type_token):
             data = response.json().get('data', [])
             if data:
                 rows = []
+                counter = 1  # Initialize the counter
                 for event_data in data:
                     token = event_data.get('token', '')
-                    if type_token == "MEN" and token == "MEN":
+                    if type_token != "MEN" and token == "MEN":
                         continue
-                    elif type_token != "MEN" and token != "MEN":
+                    elif type_token == "MEN" and token != "MEN":
                         continue
 
                     event_id = event_data.get('event', '')
-                    event_title = event_data.get('title', '')
                     chain = event_data.get('chain', '')
-                    top_bonus = event_data.get('topBonusNumber', 0)
-                    random_bonus = event_data.get('randomBonusNumber', 0)
                     total_fund_amount = event_data.get('totalFundTokenAmount', 0)
                     total_refund_amount = event_data.get('totalRefundAmount', 0)
                     total_user_reward = event_data.get('totalUserReward', 0)
                     total_bot_refund = event_data.get('totalBotRefund', 0)
-                    
-                    random_winners = [user['address'] for user in event_data.get('randomWinnerUsers', [])]
-                    random_winners_str = ", ".join(random_winners)
+                    percent = calculate_percentage(total_bot_refund, total_fund_amount)
                     
                     rows.append({
+                        '#': counter,  # Add the counter value
                         'Event ID': event_id,
-                        'Event Title': event_title,
                         'Token': token,
                         'Chain': chain,
-                        'Top Bonus Number': top_bonus,
-                        'Random Bonus Number': random_bonus,
                         'Total Fund Token Amount': total_fund_amount,
                         'Total Refund Amount': total_refund_amount,
                         'Total User Reward': total_user_reward,
                         'Total Bot Refund': total_bot_refund,
-                        'Random Winner Addresses': random_winners_str
+                        'Percent': percent
                     })
+                    counter += 1  # Increment the counter for each winner
                 
                 df = pd.DataFrame(rows)
-                file_name = f"refund_reward_{event or 'all_events'}_{from_date}_{to_date}.xlsx"
+                file_name = f"refund_reward_{type_token}_{event or 'all_events'}_{from_date}_{to_date}.xlsx"
                 df.to_excel(file_name, index=False)
                 
                 results.append(f"Data has been saved to {file_name}")
@@ -236,8 +240,11 @@ def export_random_winners_to_excel(event, from_date, to_date, type_token):
                         continue
 
                     event_id = event_data.get('event', '')
-                    random_bonus = event_data.get('randomBonusNumber', 0)
-                    random_winners = [user['address'] for user in event_data.get('randomWinnerUsers', [])]
+                    random_bonus = event_data.get('randomBonusAmount', 0)
+                    random_winners = [
+                        user['address'] for user in event_data.get('randomWinnerUsers', [])
+                        if not user['isBot']
+                    ]
 
                     for winner in random_winners:
                         rows.append({
@@ -245,12 +252,67 @@ def export_random_winners_to_excel(event, from_date, to_date, type_token):
                             'Event ID': event_id,
                             'Random Winner Address': winner,
                             'Token': token,
-                            'Random Bonus Number': random_bonus
+                            'Random Bonus Amount': random_bonus
                         })
                         counter += 1  # Increment the counter for each winner
                 
                 df = pd.DataFrame(rows)
-                file_name = f"random_winners_{event or 'all_events'}_{from_date}_{to_date}.xlsx"
+                file_name = f"random_winners_{type_token}_{event or 'all_events'}_{from_date}_{to_date}.xlsx"
+                df.to_excel(file_name, index=False)
+                
+                print(f"Data has been saved to {file_name}")
+            else:
+                print("No data found for the given parameters.")
+        except Exception as e:
+            print(f"Error processing data: {str(e)}")
+    else:
+        print(f"Failed to fetch refund reward data. Status code: {response.status_code}")
+        print(f"Error message: {response.text}")
+
+def export_top_winners_to_excel(event, from_date, to_date, type_token):
+    params = {
+        "from": format_date(from_date),
+        "to": format_date(to_date),
+        "key": API_KEY
+    }
+    
+    if event:
+        params["events"] = event
+    
+    response = requests.get(REFUND_REWARD_URL, params=params)
+    
+    if response.status_code == 200:
+        try:
+            data = response.json().get('data', [])
+            if data:
+                rows = []
+                counter = 1  # Initialize the counter
+                for event_data in data:
+                    token = event_data.get('token', '')
+                    if type_token == "MEN" and token != "MEN":
+                        continue
+                    elif type_token != "MEN" and token == "MEN":
+                        continue
+
+                    event_id = event_data.get('event', '')
+                    top_bonus = event_data.get('topBonusAmount', 0)
+                    top_winners = [
+                        user['address'] for user in event_data.get('topWinnerUsers', [])
+                        if not user['isBot']
+                    ]
+
+                    for winner in top_winners:
+                        rows.append({
+                            '#': counter,  # Add the counter value
+                            'Event ID': event_id,
+                            'Random Winner Address': winner,
+                            'Token': token,
+                            'Random Bonus Amount': top_bonus
+                        })
+                        counter += 1  # Increment the counter for each winner
+                
+                df = pd.DataFrame(rows)
+                file_name = f"top_winners_{type_token}_{event or 'all_events'}_{from_date}_{to_date}.xlsx"
                 df.to_excel(file_name, index=False)
                 
                 print(f"Data has been saved to {file_name}")
@@ -372,7 +434,8 @@ def ask_user_action():
             7: "user, community",
             8: "user, event_id",
             9: "event, from, to, token",
-            10: "event_id"
+            10: "event_id",
+            11: "event, from, to, token"
         }.get(action.get(), "")
         config_input.delete("1.0", tk.END)
         config_input.insert("1.0", placeholder_text)
@@ -389,6 +452,7 @@ def ask_user_action():
     ttk.Radiobutton(excel_actions_frame, text="Check Point User", variable=action, value=8).pack(anchor=tk.W)
     ttk.Radiobutton(excel_actions_frame, text="Export refund Reward to Excel", variable=action, value=5).pack(anchor=tk.W)
     ttk.Radiobutton(excel_actions_frame, text="Export Random Winner to Excel", variable=action, value=9).pack(anchor=tk.W)
+    ttk.Radiobutton(excel_actions_frame, text="Export Top Winner to Excel", variable=action, value=11).pack(anchor=tk.W)
     ttk.Radiobutton(excel_actions_frame, text="Export Address Count to Excel", variable=action, value=10).pack(anchor=tk.W)
 
     # Community Actions
@@ -408,7 +472,7 @@ def ask_user_action():
         
         config_parts = config_data.split(',')
 
-        if action.get() in [5, 9]:
+        if action.get() in [5, 9, 11]:
             if len(config_parts) != 4:
                 messagebox.showerror("Input Error", "Please provide event, from, to dates, and token type in the format 'event, from, to, token_type'.")
                 return
@@ -420,8 +484,10 @@ def ask_user_action():
 
             if action.get() == 5:
                 export_refund_reward_to_excel(event, from_date, to_date, type_token)
-            else:
+            elif action.get() == 9:
                 export_random_winners_to_excel(event, from_date, to_date, type_token)
+            else:
+                export_top_winners_to_excel(event, from_date, to_date, type_token)
 
         elif action.get() in [6, 7]:
             if len(config_parts) != 2:
