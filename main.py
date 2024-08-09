@@ -41,7 +41,8 @@ def get_addresses(event_id):
     if response.status_code == 200:
         data = response.json()
         if data['success']:
-            return [user['user']['address'] for user in data['data']]
+            # Chỉ thêm những user có 'ic' lớn hơn 0
+            return [user['user']['address'] for user in data['data'] if user['user'].get('ic', 0) > 0]
         else:
             results.append(f"API response unsuccessful for event {event_id}.")
             return []
@@ -49,6 +50,7 @@ def get_addresses(event_id):
         results.append(f"Failed to fetch data for event {event_id}. Status code: {response.status_code}")
         results.append(f"Error message: {response.text}")
         return []
+
 
 def select_random_addresses(addresses, count):
     return random.sample(addresses, count) if len(addresses) >= count else addresses
@@ -172,7 +174,6 @@ def export_refund_reward_to_excel(event, from_date, to_date, type_token):
             data = response.json().get('data', [])
             if data:
                 rows = []
-                counter = 1  # Initialize the counter
                 for event_data in data:
                     token = event_data.get('token', '')
                     if type_token != "MEN" and token == "MEN":
@@ -180,7 +181,9 @@ def export_refund_reward_to_excel(event, from_date, to_date, type_token):
                     elif type_token == "MEN" and token != "MEN":
                         continue
 
+                    counter = event_data.get('eventId', '')
                     event_id = event_data.get('event', '')
+                    name_event = event_data.get('title', '')
                     chain = event_data.get('chain', '')
                     total_fund_amount = event_data.get('totalFundTokenAmount', 0)
                     total_refund_amount = event_data.get('totalRefundAmount', 0)
@@ -189,8 +192,9 @@ def export_refund_reward_to_excel(event, from_date, to_date, type_token):
                     percent = calculate_percentage(total_bot_refund, total_fund_amount)
                     
                     rows.append({
-                        '#': counter,  # Add the counter value
+                        '#': counter,  
                         'Event ID': event_id,
+                        'Quest': name_event,
                         'Token': token,
                         'Chain': chain,
                         'Total Fund Token Amount': total_fund_amount,
@@ -199,7 +203,6 @@ def export_refund_reward_to_excel(event, from_date, to_date, type_token):
                         'Total Bot Refund': total_bot_refund,
                         'Percent': percent
                     })
-                    counter += 1  # Increment the counter for each winner
                 
                 df = pd.DataFrame(rows)
                 file_name = f"refund_reward_{type_token}_{event or 'all_events'}_{from_date}_{to_date}.xlsx"
@@ -231,14 +234,14 @@ def export_random_winners_to_excel(event, from_date, to_date, type_token):
             data = response.json().get('data', [])
             if data:
                 rows = []
-                counter = 1  # Initialize the counter
                 for event_data in data:
                     token = event_data.get('token', '')
                     if type_token == "MEN" and token != "MEN":
                         continue
                     elif type_token != "MEN" and token == "MEN":
                         continue
-
+                    
+                    counter = event_data.get('eventId', '')
                     event_id = event_data.get('event', '')
                     random_bonus = event_data.get('randomBonusAmount', 0)
                     random_winners = [
@@ -248,13 +251,12 @@ def export_random_winners_to_excel(event, from_date, to_date, type_token):
 
                     for winner in random_winners:
                         rows.append({
-                            '#': counter,  # Add the counter value
+                            '#': counter, 
                             'Event ID': event_id,
                             'Random Winner Address': winner,
                             'Token': token,
                             'Random Bonus Amount': random_bonus
                         })
-                        counter += 1  # Increment the counter for each winner
                 
                 df = pd.DataFrame(rows)
                 file_name = f"random_winners_{type_token}_{event or 'all_events'}_{from_date}_{to_date}.xlsx"
@@ -286,7 +288,6 @@ def export_top_winners_to_excel(event, from_date, to_date, type_token):
             data = response.json().get('data', [])
             if data:
                 rows = []
-                counter = 1  # Initialize the counter
                 for event_data in data:
                     token = event_data.get('token', '')
                     if type_token == "MEN" and token != "MEN":
@@ -294,6 +295,7 @@ def export_top_winners_to_excel(event, from_date, to_date, type_token):
                     elif type_token != "MEN" and token == "MEN":
                         continue
 
+                    counter = event_data.get('eventId', '')
                     event_id = event_data.get('event', '')
                     top_bonus = event_data.get('topBonusAmount', 0)
                     top_winners = [
@@ -303,13 +305,12 @@ def export_top_winners_to_excel(event, from_date, to_date, type_token):
 
                     for winner in top_winners:
                         rows.append({
-                            '#': counter,  # Add the counter value
+                            '#': counter, 
                             'Event ID': event_id,
                             'Random Winner Address': winner,
                             'Token': token,
                             'Random Bonus Amount': top_bonus
                         })
-                        counter += 1  # Increment the counter for each winner
                 
                 df = pd.DataFrame(rows)
                 file_name = f"top_winners_{type_token}_{event or 'all_events'}_{from_date}_{to_date}.xlsx"
@@ -328,14 +329,26 @@ def export_address_counts_to_excel(event_configurations):
     event_ids = [event['event_id'] for event in event_configurations]
     data = []
 
+    max_ic_address = None
+    max_ic_value = 0
+
     for event_id in event_ids:
         response = requests.get(GET_USERS_URL, params={"key": API_KEY, "event": event_id})
         
         if response.status_code == 200:
             data_response = response.json()
             if data_response['success']:
-                address_count = len([user['user']['address'] for user in data_response['data']])
-                data.append({'#': len(data) + 1, 'event_id': event_id, 'count': address_count})
+                users = data_response['data']
+                address_count = len([user['user']['address'] for user in users])
+                ic_count = sum(1 for user in users if user['user'].get('ic', 0) > 0)
+                
+                for user in users:
+                    ic_value = user['user'].get('ic', 0)
+                    if ic_value > max_ic_value:
+                        max_ic_value = ic_value
+                        max_ic_address = user['user']['address']
+                
+                data.append({'#': len(data) + 1, 'event_id': event_id, 'count': address_count, 'ic_count': ic_count})
             else:
                 results.append(f"API response unsuccessful for event {event_id}.")
         else:
@@ -349,6 +362,14 @@ def export_address_counts_to_excel(event_configurations):
         results.append(f"Data has been saved to {file_name}")
     else:
         results.append("No data to export.")
+
+    if max_ic_address:
+        results.append(f"The address with the highest IC is {max_ic_address} with IC value {max_ic_value}.")
+    else:
+        results.append("No address with IC value greater than 0 found.")
+
+    for result in results:
+        print(result)
 
 def edit_manager_to_community(user, community, action):
     payload = {
@@ -449,7 +470,7 @@ def ask_user_action():
     ttk.Radiobutton(event_actions_frame, text="Add Random Bot All Events", variable=action, value=4).pack(anchor=tk.W)
 
     # Excel Actions
-    ttk.Radiobutton(excel_actions_frame, text="Check Point User", variable=action, value=8).pack(anchor=tk.W)
+    # ttk.Radiobutton(excel_actions_frame, text="Check Point User", variable=action, value=8).pack(anchor=tk.W)
     ttk.Radiobutton(excel_actions_frame, text="Export refund Reward to Excel", variable=action, value=5).pack(anchor=tk.W)
     ttk.Radiobutton(excel_actions_frame, text="Export Random Winner to Excel", variable=action, value=9).pack(anchor=tk.W)
     ttk.Radiobutton(excel_actions_frame, text="Export Top Winner to Excel", variable=action, value=11).pack(anchor=tk.W)
