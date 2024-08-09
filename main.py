@@ -157,15 +157,12 @@ def calculate_percentage(a, b):
         # Nếu xảy ra lỗi chia cho 0 hoặc giá trị không hợp lệ, trả về 0
         return 0
 
-def export_refund_reward_to_excel(event, from_date, to_date, type_token):
+def export_refund_reward_to_excel(from_date, to_date, type_token):
     params = {
         "from": format_date(from_date),
         "to": format_date(to_date),
         "key": API_KEY
     }
-    
-    if event:
-        params["events"] = event
     
     response = requests.get(REFUND_REWARD_URL, params=params)
     
@@ -205,7 +202,7 @@ def export_refund_reward_to_excel(event, from_date, to_date, type_token):
                     })
                 
                 df = pd.DataFrame(rows)
-                file_name = f"refund_reward_{type_token}_{event or 'all_events'}_{from_date}_{to_date}.xlsx"
+                file_name = f"refund_reward_{type_token}_{'all_events'}_{from_date}_{to_date}.xlsx"
                 df.to_excel(file_name, index=False)
                 
                 results.append(f"Data has been saved to {file_name}")
@@ -217,15 +214,13 @@ def export_refund_reward_to_excel(event, from_date, to_date, type_token):
         results.append(f"Failed to fetch refund reward data. Status code: {response.status_code}")
         results.append(f"Error message: {response.text}")
 
-def export_random_winners_to_excel(event, from_date, to_date, type_token):
+def export_random_winners_to_excel(from_date, to_date, type_token):
     params = {
         "from": format_date(from_date),
         "to": format_date(to_date),
         "key": API_KEY
     }
     
-    if event:
-        params["events"] = event
     
     response = requests.get(REFUND_REWARD_URL, params=params)
     
@@ -259,7 +254,7 @@ def export_random_winners_to_excel(event, from_date, to_date, type_token):
                         })
                 
                 df = pd.DataFrame(rows)
-                file_name = f"random_winners_{type_token}_{event or 'all_events'}_{from_date}_{to_date}.xlsx"
+                file_name = f"random_winners_{type_token}_{'all_events'}_{from_date}_{to_date}.xlsx"
                 df.to_excel(file_name, index=False)
                 
                 print(f"Data has been saved to {file_name}")
@@ -271,18 +266,15 @@ def export_random_winners_to_excel(event, from_date, to_date, type_token):
         print(f"Failed to fetch refund reward data. Status code: {response.status_code}")
         print(f"Error message: {response.text}")
 
-def export_top_winners_to_excel(event, from_date, to_date, type_token):
+def export_top_winners_to_excel(from_date, to_date, type_token):
     params = {
         "from": format_date(from_date),
         "to": format_date(to_date),
         "key": API_KEY
     }
-    
-    if event:
-        params["events"] = event
-    
+
     response = requests.get(REFUND_REWARD_URL, params=params)
-    
+
     if response.status_code == 200:
         try:
             data = response.json().get('data', [])
@@ -295,35 +287,40 @@ def export_top_winners_to_excel(event, from_date, to_date, type_token):
                     elif type_token != "MEN" and token == "MEN":
                         continue
 
-                    counter = event_data.get('eventId', '')
                     event_id = event_data.get('event', '')
-                    top_bonus = event_data.get('topBonusAmount', 0)
-                    top_winners = [
-                        user['address'] for user in event_data.get('topWinnerUsers', [])
-                        if not user['isBot']
-                    ]
+                    top_bonus = event_data.get('topBonusAmount', [])
+                    top_winners = []
 
-                    for winner in top_winners:
-                        rows.append({
-                            '#': counter, 
-                            'Event ID': event_id,
-                            'Random Winner Address': winner,
-                            'Token': token,
-                            'Random Bonus Amount': top_bonus
-                        })
-                
+                    for index, user in enumerate(event_data.get('topWinnerUsers', [])):
+                        try:
+                            if not user['isBot']:
+                                top_winners.append(user['address'])
+
+                                # Lấy top_bonus tương ứng với user hiện tại
+                                bonus_amount = top_bonus[index] if index < len(top_bonus) else 0
+                                
+                                rows.append({
+                                    '#': index + 1,  # Số thứ tự
+                                    'Event ID': event_id,
+                                    'Random Winner Address': user['address'],
+                                    'Token': token,
+                                    'Random Bonus Amount': bonus_amount
+                                })
+                        except KeyError:
+                            continue
+
                 df = pd.DataFrame(rows)
-                file_name = f"top_winners_{type_token}_{event or 'all_events'}_{from_date}_{to_date}.xlsx"
+                file_name = f"top_winners_{type_token}_all_events_{from_date}_{to_date}.xlsx"
                 df.to_excel(file_name, index=False)
-                
-                print(f"Data has been saved to {file_name}")
+
+                results.append(f"Data has been saved to {file_name}")
             else:
-                print("No data found for the given parameters.")
+                results.append("No data found for the given parameters.")
         except Exception as e:
-            print(f"Error processing data: {str(e)}")
+            results.append(f"Error processing data: {str(e)}")
     else:
-        print(f"Failed to fetch refund reward data. Status code: {response.status_code}")
-        print(f"Error message: {response.text}")
+        results.append(f"Failed to fetch refund reward data. Status code: {response.status_code}")
+        results.append(f"Error message: {response.text}")
 
 def export_address_counts_to_excel(event_configurations):
     event_ids = [event['event_id'] for event in event_configurations]
@@ -450,13 +447,13 @@ def ask_user_action():
             2: "event_id",
             3: "event_id, number, address_setup",
             4: "event_id, count",
-            5: "event, from, to, token",
+            5: "from, to, token",
             6: "user, community", 
             7: "user, community",
             8: "user, event_id",
-            9: "event, from, to, token",
+            9: "from, to, token",
             10: "event_id",
-            11: "event, from, to, token"
+            11: "from, to, token"
         }.get(action.get(), "")
         config_input.delete("1.0", tk.END)
         config_input.insert("1.0", placeholder_text)
@@ -494,21 +491,20 @@ def ask_user_action():
         config_parts = config_data.split(',')
 
         if action.get() in [5, 9, 11]:
-            if len(config_parts) != 4:
+            if len(config_parts) != 3:
                 messagebox.showerror("Input Error", "Please provide event, from, to dates, and token type in the format 'event, from, to, token_type'.")
                 return
 
-            event = config_parts[0].strip()
-            from_date = config_parts[1].strip()
-            to_date = config_parts[2].strip()
-            type_token = config_parts[3].strip()
+            from_date = config_parts[0].strip()
+            to_date = config_parts[1].strip()
+            type_token = config_parts[2].strip()
 
             if action.get() == 5:
-                export_refund_reward_to_excel(event, from_date, to_date, type_token)
+                export_refund_reward_to_excel(from_date, to_date, type_token)
             elif action.get() == 9:
-                export_random_winners_to_excel(event, from_date, to_date, type_token)
+                export_random_winners_to_excel(from_date, to_date, type_token)
             else:
-                export_top_winners_to_excel(event, from_date, to_date, type_token)
+                export_top_winners_to_excel(from_date, to_date, type_token)
 
         elif action.get() in [6, 7]:
             if len(config_parts) != 2:
