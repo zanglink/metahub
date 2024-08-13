@@ -7,6 +7,7 @@ import tkinter as tk
 from tkinter import ttk, messagebox
 import pandas as pd
 from datetime import datetime
+from collections import defaultdict
 
 # URLs and API key
 API_KEY = "DAC-private-private-!!!"
@@ -162,6 +163,13 @@ def calculate_percentage(a, b):
 
 def export_refund_reward_to_excel(from_date, to_date):
     all_rows = []
+    token_summary = defaultdict(lambda: {
+        'Chain': '',
+        'Total Fund Token Amount': 0,
+        'Total Refund Amount': 0,
+        'Total User Reward': 0,
+        'Total Bot Refund': 0
+    })
 
     # Initial API call to get the count and determine max_page
     initial_params = {
@@ -195,6 +203,7 @@ def export_refund_reward_to_excel(from_date, to_date):
                         data = response.json().get('data', {}).get('data', [])
                         if data:
                             for event_data in data:
+                                # Add to the main sheet
                                 all_rows.append({
                                     'ID': event_data.get('eventId', ''),
                                     'Event ID': event_data.get('event', ''),
@@ -212,6 +221,14 @@ def export_refund_reward_to_excel(from_date, to_date):
                                         event_data.get('totalFundTokenAmount', 0)
                                     )
                                 })
+                                
+                                # Update the token summary data
+                                token = event_data.get('token', '')
+                                token_summary[token]['Chain'] = event_data.get('chain', '')
+                                token_summary[token]['Total Fund Token Amount'] += event_data.get('totalFundTokenAmount', 0)
+                                token_summary[token]['Total Refund Amount'] += event_data.get('totalRefundAmount', 0)
+                                token_summary[token]['Total User Reward'] += event_data.get('totalUserReward', 0)
+                                token_summary[token]['Total Bot Refund'] += event_data.get('totalBotRefund', 0)
                         else:
                             results.append(f"No data found for page {page}.")
                     except Exception as e:
@@ -224,9 +241,29 @@ def export_refund_reward_to_excel(from_date, to_date):
                 # Sort all rows by 'ID'
                 all_rows = sorted(all_rows, key=lambda x: x['ID'])
 
-                df = pd.DataFrame(all_rows)
+                df_main = pd.DataFrame(all_rows)
                 file_name = f"refund_reward_{from_date}_{to_date}_pages_0_to_{max_page}.xlsx"
-                df.to_excel(file_name, index=False)
+                
+                # Prepare the token summary sheet
+                token_summary_rows = [
+                    {
+                        '#': i + 1,
+                        'Token': token,
+                        'Chain': data['Chain'],
+                        'Total Fund Token Amount': data['Total Fund Token Amount'],
+                        'Total Refund Amount': data['Total Refund Amount'],
+                        'Total User Reward': data['Total User Reward'],
+                        'Total Bot Refund': data['Total Bot Refund']
+                    }
+                    for i, (token, data) in enumerate(token_summary.items())
+                ]
+                df_summary = pd.DataFrame(token_summary_rows)
+
+                # Write both sheets to the same Excel file
+                with pd.ExcelWriter(file_name) as writer:
+                    df_main.to_excel(writer, sheet_name='Refund Reward', index=False)
+                    df_summary.to_excel(writer, sheet_name='Token Summary', index=False)
+                
                 results.append(f"Data has been saved to {file_name}")
             else:
                 results.append("No data found for the entire range of pages.")
@@ -238,11 +275,11 @@ def export_refund_reward_to_excel(from_date, to_date):
         results.append(f"Error message: {initial_response.text}")
 
 
-
 def export_winners_to_excel(from_date, to_date):
     all_rows = []
-    page = 0
+    wallet_data = {}
 
+    page = 0
     while True:
         params = {
             "from": format_date(from_date),
@@ -261,31 +298,38 @@ def export_winners_to_excel(from_date, to_date):
 
                 if page_data:
                     for event_data in page_data:
-                        all_rows.extend([
-                            {
+                        for index, user in enumerate(chain(
+                                event_data.get('topWinnerUsers', []), 
+                                event_data.get('randomWinnerUsers', []))):
+                            
+                            if user.get('isBot', False):
+                                continue
+                            
+                            token = event_data.get('token', '')
+                            wallet = user.get('address', '')
+                            bonus_amount = (event_data.get('topBonusAmount', [])[index] 
+                                            if index < len(event_data.get('topBonusAmount', []))
+                                            else event_data.get('randomBonusAmount', 0))
+
+                            # Accumulate data for the main sheet
+                            all_rows.append({
                                 'ID': event_data.get('eventId', ''),
                                 'Event ID': event_data.get('event', ''),
                                 'Event Title': event_data.get('title', ''),
-                                'Start Day': event_data.get('start', ''),
-                                'End Day': event_data.get('end', ''),
-                                'Token': event_data.get('token', ''),
+                                'Token': token,
                                 'Chain': event_data.get('chain', ''),
-                                'Winner Address': user.get('address', ''),
-                                'Bonus Amount': (
-                                    event_data.get('topBonusAmount', [])[index] 
-                                    if index < len(event_data.get('topBonusAmount', []))
-                                    else event_data.get('randomBonusAmount', 0)
-                                ),
+                                'Winner Address': wallet,
+                                'Bonus Amount': bonus_amount,
                                 'Reward Type': 'Top' if index < len(event_data.get('topBonusAmount', [])) else 'Random'
-                            }
-                            for index, user in enumerate(chain(
-                                event_data.get('topWinnerUsers', []), 
-                                event_data.get('randomWinnerUsers', [])
-                            ))
-                            if not user.get('isBot', False)
-                        ])
-   
-                # Tính toán số trang tối đa từ số lượng kết quả và dừng khi hết dữ liệu
+                            })
+
+                            # Accumulate wallet data for the new sheet
+                            if (wallet, token) in wallet_data:
+                                wallet_data[(wallet, token)] += bonus_amount
+                            else:
+                                wallet_data[(wallet, token)] = bonus_amount
+
+                # Calculate the maximum page and stop when done
                 max_page = (count + len(page_data) - 1) // len(page_data)
                 if page >= max_page:
                     break
@@ -301,11 +345,21 @@ def export_winners_to_excel(from_date, to_date):
             break
 
     if all_rows:
-        # Sắp xếp dữ liệu theo ID trước khi xuất ra file Excel
+        # Sort the main data by ID before exporting
         all_rows = sorted(all_rows, key=lambda x: x['ID'])
-        df = pd.DataFrame(all_rows)
+        df_main = pd.DataFrame(all_rows)
         file_name = f"winners_{from_date}_{to_date}.xlsx"
-        df.to_excel(file_name, index=False)
+        
+        # Prepare the wallet summary sheet
+        wallet_summary = [{'#': i+1, 'Wallet': wallet, 'Amount': amount, 'Token': token}
+                          for i, ((wallet, token), amount) in enumerate(wallet_data.items())]
+        df_summary = pd.DataFrame(wallet_summary)
+
+        # Write both sheets to the same Excel file
+        with pd.ExcelWriter(file_name) as writer:
+            df_main.to_excel(writer, sheet_name='Winners', index=False)
+            df_summary.to_excel(writer, sheet_name='Wallet Summary', index=False)
+        
         results.append(f"Data has been saved to {file_name}")
     else:
         results.append("No data found for the entire range of pages.")
@@ -383,53 +437,6 @@ def export_user_do_quest_to_excel(event_configurations):
     else:
         results.append("No data found for the given events.")
 
-
-
-def export_address_counts_to_excel(event_configurations):
-    event_ids = [event['event_id'] for event in event_configurations]
-    data = []
-
-    max_ic_address = None
-    max_ic_value = 0
-
-    for event_id in event_ids:
-        response = requests.get(GET_USERS_URL, params={"key": API_KEY, "event": event_id})
-        
-        if response.status_code == 200:
-            data_response = response.json()
-            if data_response['success']:
-                users = data_response['data']
-                address_count = len([user['user']['address'] for user in users])
-                ic_count = sum(1 for user in users if user['user'].get('ic', 0) > 0)
-                
-                for user in users:
-                    ic_value = user['user'].get('ic', 0)
-                    if ic_value > max_ic_value:
-                        max_ic_value = ic_value
-                        max_ic_address = user['user']['address']
-                
-                data.append({'#': len(data) + 1, 'event_id': event_id, 'count': address_count, 'ic_count': ic_count})
-            else:
-                results.append(f"API response unsuccessful for event {event_id}.")
-        else:
-            results.append(f"Failed to fetch data for event {event_id}. Status code: {response.status_code}")
-            results.append(f"Error message: {response.text}")
-
-    if data:
-        df = pd.DataFrame(data)
-        file_name = "address_counts.xlsx"
-        df.to_excel(file_name, index=False)
-        results.append(f"Data has been saved to {file_name}")
-    else:
-        results.append("No data to export.")
-
-    if max_ic_address:
-        results.append(f"The address with the highest IC is {max_ic_address} with IC value {max_ic_value}.")
-    else:
-        results.append("No address with IC value greater than 0 found.")
-
-    for result in results:
-        print(result)
 
 def edit_manager_to_community(user, community, action):
     payload = {
@@ -550,7 +557,6 @@ def ask_user_action():
     # ttk.Radiobutton(excel_actions_frame, text="Check Point User", variable=action, value=8).pack(anchor=tk.W)
     ttk.Radiobutton(excel_actions_frame, text="Export Refund Reward to Excel", variable=action, value=5).pack(anchor=tk.W)
     ttk.Radiobutton(excel_actions_frame, text="Export Reward Winner to Excel", variable=action, value=9).pack(anchor=tk.W)
-    ttk.Radiobutton(excel_actions_frame, text="Export Address Count to Excel", variable=action, value=10).pack(anchor=tk.W)
     ttk.Radiobutton(excel_actions_frame, text="Export User Do Quest to Excel", variable=action, value=11).pack(anchor=tk.W)
 
     # Community Actions
@@ -620,8 +626,6 @@ def ask_user_action():
                 process_events(event_configurations)
             elif action.get() == 4:
                 add_random_bot_all_events(event_configurations)
-            elif action.get() == 10:
-                export_address_counts_to_excel(event_configurations)
             elif action.get() == 11:
                 export_user_do_quest_to_excel(event_configurations)
             else:
