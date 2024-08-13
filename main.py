@@ -1,6 +1,8 @@
 import requests
 import json
 import random
+import math
+import time
 import tkinter as tk
 from tkinter import ttk, messagebox
 import pandas as pd
@@ -16,6 +18,7 @@ STOP_ADD_BOT_URL = f"{BASE_URL}deactive"
 GET_USERS_URL = f"{BASE_URL}realUsers"
 RANDOM_WINNER_URL = f"{BASE_URL}randomWinner"
 ADD_BOT_URL = f"{EVENT_URL}addBot"
+USER_DO_QUEST = f"{EVENT_URL}userDoQuest"
 REFUND_REWARD_URL = f"{BASE_URL}refundReward"
 EDIT_USER_COMMUNITY_URL = f"{COMMUNITY_URL}private/manager"
 CHECK_POINT = f"{EVENT_URL}private/userPoint"
@@ -157,170 +160,138 @@ def calculate_percentage(a, b):
         # Nếu xảy ra lỗi chia cho 0 hoặc giá trị không hợp lệ, trả về 0
         return 0
 
-def export_refund_reward_to_excel(from_date, to_date, type_token):
-    params = {
-        "from": format_date(from_date),
-        "to": format_date(to_date),
-        "key": API_KEY
-    }
-    
-    response = requests.get(REFUND_REWARD_URL, params=params)
-    
-    if response.status_code == 200:
-        try:
-            data = response.json().get('data', [])
-            if data:
-                rows = []
-                for event_data in data:
-                    token = event_data.get('token', '')
-                    if type_token != "MEN" and token == "MEN":
-                        continue
-                    elif type_token == "MEN" and token != "MEN":
-                        continue
+def export_refund_reward_to_excel(from_date, to_date, max_page):
+    max_page = int(max_page)  # Chuyển đổi max_page sang kiểu số nguyên
+    all_rows = []
 
-                    counter = event_data.get('eventId', '')
-                    event_id = event_data.get('event', '')
-                    name_event = event_data.get('title', '')
-                    chain = event_data.get('chain', '')
-                    total_fund_amount = event_data.get('totalFundTokenAmount', 0)
-                    total_refund_amount = event_data.get('totalRefundAmount', 0)
-                    total_user_reward = event_data.get('totalUserReward', 0)
-                    total_bot_refund = event_data.get('totalBotRefund', 0)
-                    percent = calculate_percentage(total_bot_refund, total_fund_amount)
-                    
-                    rows.append({
-                        '#': counter,  
-                        'Event ID': event_id,
-                        'Quest': name_event,
-                        'Token': token,
-                        'Chain': chain,
-                        'Total Fund Token Amount': total_fund_amount,
-                        'Total Refund Amount': total_refund_amount,
-                        'Total User Reward': total_user_reward,
-                        'Total Bot Refund': total_bot_refund,
-                        'Percent': percent
-                    })
-                
-                df = pd.DataFrame(rows)
-                file_name = f"refund_reward_{type_token}_{'all_events'}_{from_date}_{to_date}.xlsx"
-                df.to_excel(file_name, index=False)
-                
-                results.append(f"Data has been saved to {file_name}")
-            else:
-                results.append("No data found for the given parameters.")
-        except Exception as e:
-            results.append(f"Error processing data: {str(e)}")
-    else:
-        results.append(f"Failed to fetch refund reward data. Status code: {response.status_code}")
-        results.append(f"Error message: {response.text}")
-
-def export_random_winners_to_excel(from_date, to_date, type_token):
-    params = {
-        "from": format_date(from_date),
-        "to": format_date(to_date),
-        "key": API_KEY
-    }
-    
-    
-    response = requests.get(REFUND_REWARD_URL, params=params)
-    
-    if response.status_code == 200:
-        try:
-            data = response.json().get('data', [])
-            if data:
-                rows = []
-                for event_data in data:
-                    token = event_data.get('token', '')
-                    if type_token == "MEN" and token != "MEN":
-                        continue
-                    elif type_token != "MEN" and token == "MEN":
-                        continue
-                    
-                    counter = event_data.get('eventId', '')
-                    event_id = event_data.get('event', '')
-                    random_bonus = event_data.get('randomBonusAmount', 0)
-                    random_winners = [
-                        user['address'] for user in event_data.get('randomWinnerUsers', [])
-                        if not user['isBot']
-                    ]
-
-                    for winner in random_winners:
-                        rows.append({
-                            '#': counter, 
+    for page in range(max_page + 1):
+        params = {
+            "from": format_date(from_date),
+            "to": format_date(to_date),
+            "page": page,
+            "key": API_KEY
+        }
+        
+        response = requests.get(REFUND_REWARD_URL, params=params)
+        
+        if response.status_code == 200:
+            try:
+                data = response.json().get('data', {}).get('data', [])
+                if data:
+                    for event_data in data:
+                        token = event_data.get('token', '')
+                        counter = event_data.get('eventId', '')
+                        event_id = event_data.get('event', '')
+                        title = event_data.get('title', '')
+                        chain = event_data.get('chain', '')
+                        total_fund_amount = event_data.get('totalFundTokenAmount', 0)
+                        total_refund_amount = event_data.get('totalRefundAmount', 0)
+                        total_user_reward = event_data.get('totalUserReward', 0)
+                        total_bot_refund = event_data.get('totalBotRefund', 0)
+                        percent = calculate_percentage(total_bot_refund, total_fund_amount)
+                        
+                        all_rows.append({
+                            '#': len(all_rows) + 1,  # Số thứ tự tăng dần
                             'Event ID': event_id,
-                            'Random Winner Address': winner,
+                            'ID': counter,
+                            'Event Title': title,
                             'Token': token,
-                            'Random Bonus Amount': random_bonus
+                            'Chain': chain,
+                            'Total Fund Token Amount': total_fund_amount,
+                            'Total Refund Amount': total_refund_amount,
+                            'Total User Reward': total_user_reward,
+                            'Total Bot Refund': total_bot_refund,
+                            'Percent': percent
                         })
-                
-                df = pd.DataFrame(rows)
-                file_name = f"random_winners_{type_token}_{'all_events'}_{from_date}_{to_date}.xlsx"
-                df.to_excel(file_name, index=False)
-                
-                print(f"Data has been saved to {file_name}")
-            else:
-                print("No data found for the given parameters.")
-        except Exception as e:
-            print(f"Error processing data: {str(e)}")
+                else:
+                    results.append(f"No data found for page {page}.")
+            except Exception as e:
+                results.append(f"Error processing data for page {page}: {str(e)}")
+        else:
+            results.append(f"Failed to fetch data for page {page}. Status code: {response.status_code}")
+            results.append(f"Error message: {response.text}")
+
+    if all_rows:
+        df = pd.DataFrame(all_rows)
+        file_name = f"refund_reward_{from_date}_{to_date}_pages_0_to_{max_page}.xlsx"
+        df.to_excel(file_name, index=False)
+        results.append(f"Data has been saved to {file_name}")
     else:
-        print(f"Failed to fetch refund reward data. Status code: {response.status_code}")
-        print(f"Error message: {response.text}")
+        results.append("No data found for the entire range of pages.")
 
-def export_top_winners_to_excel(from_date, to_date, type_token):
-    params = {
-        "from": format_date(from_date),
-        "to": format_date(to_date),
-        "key": API_KEY
-    }
 
-    response = requests.get(REFUND_REWARD_URL, params=params)
+def export_winners_to_excel(from_date, to_date, max_page):
+    max_page = int(max_page)  # Chuyển đổi max_page sang kiểu số nguyên
+    all_rows = []
 
-    if response.status_code == 200:
-        try:
-            data = response.json().get('data', [])
-            if data:
-                rows = []
-                for event_data in data:
-                    token = event_data.get('token', '')
-                    if type_token == "MEN" and token != "MEN":
-                        continue
-                    elif type_token != "MEN" and token == "MEN":
-                        continue
+    for page in range(max_page + 1):
+        params = {
+            "from": format_date(from_date),
+            "to": format_date(to_date),
+            "page": page,
+            "key": API_KEY
+        }
 
-                    event_id = event_data.get('event', '')
-                    top_bonus = event_data.get('topBonusAmount', [])
-                    top_winners = []
+        response = requests.get(REFUND_REWARD_URL, params=params)
+        
+        if response.status_code == 200:
+            try:
+                data = response.json().get('data', {}).get('data', [])
+                if data:
+                    for event_data in data:
+                        event_id = event_data.get('event', '')
+                        event_counter = event_data.get('eventId', '')
+                        event_title = event_data.get('title', '')
+                        event_start = event_data.get('start', '')
+                        event_end = event_data.get('end', '')
+                        token = event_data.get('token', '')
+                        chain = event_data.get('chain', '')
+                        total_fund = event_data.get('totalFundTokenAmount', 0)
+                        top_bonus = event_data.get('topBonusAmount', [])
+                        random_bonus = event_data.get('randomBonusAmount', 0)
+                        
+                        for index, user in enumerate(event_data.get('topWinnerUsers', [])):
+                            all_rows.append({
+                                '#': len(all_rows) + 1,
+                                'Event ID': event_id,
+                                'Event Title': event_title,
+                                'Token': token,
+                                'Chain': chain,
+                                'Total Fund': total_fund,
+                                'Winner Address': user.get('address', ''),
+                                'Bonus Amount': top_bonus[index] if index < len(top_bonus) else 0,
+                                'Reward Type': 'Top'
+                            })
 
-                    for index, user in enumerate(event_data.get('topWinnerUsers', [])):
-                        try:
-                            if not user['isBot']:
-                                top_winners.append(user['address'])
+                        for user in event_data.get('randomWinnerUsers', []):
+                            all_rows.append({
+                                '#': len(all_rows) + 1,
+                                'Event ID': event_id,
+                                'Event Title': event_title,
+                                'Token': token,
+                                'Chain': chain,
+                                'Total Fund': total_fund,
+                                'Winner Address': user.get('address', ''),
+                                'Bonus Amount': random_bonus,
+                                'Reward Type': 'Random'
+                            })
+                else:
+                    results.append(f"No data found for page {page}.")
+            except Exception as e:
+                results.append(f"Error processing data for page {page}: {str(e)}")
+        else:
+            results.append(f"Failed to fetch data for page {page}. Status code: {response.status_code}")
+            results.append(f"Error message: {response.text}")
 
-                                # Lấy top_bonus tương ứng với user hiện tại
-                                bonus_amount = top_bonus[index] if index < len(top_bonus) else 0
-                                
-                                rows.append({
-                                    '#': index + 1,  # Số thứ tự
-                                    'Event ID': event_id,
-                                    'Random Winner Address': user['address'],
-                                    'Token': token,
-                                    'Random Bonus Amount': bonus_amount
-                                })
-                        except KeyError:
-                            continue
-
-                df = pd.DataFrame(rows)
-                file_name = f"top_winners_{type_token}_all_events_{from_date}_{to_date}.xlsx"
-                df.to_excel(file_name, index=False)
-
-                results.append(f"Data has been saved to {file_name}")
-            else:
-                results.append("No data found for the given parameters.")
-        except Exception as e:
-            results.append(f"Error processing data: {str(e)}")
+    if all_rows:
+        df = pd.DataFrame(all_rows)
+        file_name = f"winners_{from_date}_{to_date}_pages_0_to_{max_page}.xlsx"
+        df.to_excel(file_name, index=False)
+        results.append(f"Data has been saved to {file_name}")
     else:
-        results.append(f"Failed to fetch refund reward data. Status code: {response.status_code}")
-        results.append(f"Error message: {response.text}")
+        results.append("No data found for the entire range of pages.")
+
+        results.append("No data found for the given parameters.")
 
 def export_address_counts_to_excel(event_configurations):
     event_ids = [event['event_id'] for event in event_configurations]
@@ -400,20 +371,37 @@ def check_point_user(user, event_id):
     if response.status_code == 200:
         data = response.json()
         if data['success']:
-            points = data.get('points', 'No points information available')
-            result_data = {
-                "user": user,
-                "event": event_id,
-                "points": points
-            }
-            file_name = f"user_points_{user}_{event_id}.json"
-            with open(file_name, 'w') as f:
-                json.dump(result_data, f, indent=4)
-            messagebox.showinfo("Success", f"Data has been saved to {file_name}")
+            points_data = data.get('data', {})
+            total_point = points_data.get('totalPoint', 'No total point available')
+            point_from_event = points_data.get('pointFromEvent', 'No event point available')
+            point_from_ref = points_data.get('pointFromRef', 'No referral point available')
+            total_ref = points_data.get('totalRef', 'No total ref available')
+            ref_histories = points_data.get('refHistories', [])
+
+            # Show data into results
+            results.append(f"User: {user}, Event: {event_id}")
+            results.append(f"Total Points: {total_point}")
+            results.append(f"Points from Event: {point_from_event}")
+            results.append(f"Points from Referrals: {point_from_ref}")
+            results.append(f"Total Referrals: {total_ref}")
+
+            if ref_histories:
+                results.append("Referral Histories:")
+                for ref in ref_histories:
+                    ref_user = ref.get('user', {})
+                    ref_user_address = ref_user.get('address', 'No address available')
+                    ref_user_username = ref_user.get('username', 'No username available')
+                    inviter_id = ref.get('inviter', 'No inviter available')
+                    ref_event_id = ref.get('event', 'No event available')
+
+                    results.append(f"  - User Address: {ref_user_address}, Username: {ref_user_username}")
+                    results.append(f"    Inviter ID: {inviter_id}, Event ID: {ref_event_id}")
+            else:
+                results.append("No referral histories available.")
         else:
-            messagebox.showerror("Error", f"Failed to retrieve points. Response was unsuccessful.\n{data}")
+            results.append(f"Failed to retrieve points. Response was unsuccessful. Data: {data}")
     else:
-        messagebox.showerror("Error", f"Failed to retrieve points. Status code: {response.status_code}\n{response.text}")
+        results.append(f"Failed to retrieve points. Status code: {response.status_code}. Error message: {response.text}")
 
 
 def ask_user_action():
@@ -447,13 +435,12 @@ def ask_user_action():
             2: "event_id",
             3: "event_id, number, address_setup",
             4: "event_id, count",
-            5: "from, to, token",
+            5: "from, to",
             6: "user, community", 
             7: "user, community",
             8: "user, event_id",
-            9: "from, to, token",
-            10: "event_id",
-            11: "from, to, token"
+            9: "from, to",
+            10: "event_id"
         }.get(action.get(), "")
         config_input.delete("1.0", tk.END)
         config_input.insert("1.0", placeholder_text)
@@ -468,9 +455,8 @@ def ask_user_action():
 
     # Excel Actions
     # ttk.Radiobutton(excel_actions_frame, text="Check Point User", variable=action, value=8).pack(anchor=tk.W)
-    ttk.Radiobutton(excel_actions_frame, text="Export refund Reward to Excel", variable=action, value=5).pack(anchor=tk.W)
-    ttk.Radiobutton(excel_actions_frame, text="Export Random Winner to Excel", variable=action, value=9).pack(anchor=tk.W)
-    ttk.Radiobutton(excel_actions_frame, text="Export Top Winner to Excel", variable=action, value=11).pack(anchor=tk.W)
+    ttk.Radiobutton(excel_actions_frame, text="Export Refund Reward to Excel", variable=action, value=5).pack(anchor=tk.W)
+    ttk.Radiobutton(excel_actions_frame, text="Export Reward Winner to Excel", variable=action, value=9).pack(anchor=tk.W)
     ttk.Radiobutton(excel_actions_frame, text="Export Address Count to Excel", variable=action, value=10).pack(anchor=tk.W)
 
     # Community Actions
@@ -490,21 +476,19 @@ def ask_user_action():
         
         config_parts = config_data.split(',')
 
-        if action.get() in [5, 9, 11]:
+        if action.get() in [5, 9]:
             if len(config_parts) != 3:
-                messagebox.showerror("Input Error", "Please provide event, from, to dates, and token type in the format 'event, from, to, token_type'.")
+                messagebox.showerror("Input Error", "Please provide  from, to in the format 'from, to'.")
                 return
 
             from_date = config_parts[0].strip()
             to_date = config_parts[1].strip()
-            type_token = config_parts[2].strip()
+            max_page = config_parts[2].strip()
 
             if action.get() == 5:
-                export_refund_reward_to_excel(from_date, to_date, type_token)
-            elif action.get() == 9:
-                export_random_winners_to_excel(from_date, to_date, type_token)
+                export_refund_reward_to_excel(from_date, to_date, max_page)
             else:
-                export_top_winners_to_excel(from_date, to_date, type_token)
+                export_winners_to_excel(from_date, to_date, max_page)
 
         elif action.get() in [6, 7]:
             if len(config_parts) != 2:
