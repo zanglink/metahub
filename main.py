@@ -351,10 +351,10 @@ def export_winners_to_excel(from_date, to_date):
         df_main = pd.DataFrame(all_rows)
         file_name = f"winners_{from_date}_{to_date}.xlsx"
         
-        # Prepare the wallet summary sheet
+        # Prepare the wallet summary sheet and sort by Token (ascending) and Amount (descending)
         wallet_summary = [{'#': i+1, 'Wallet': wallet, 'Amount': amount, 'Token': token}
                           for i, ((wallet, token), amount) in enumerate(wallet_data.items())]
-        df_summary = pd.DataFrame(wallet_summary)
+        df_summary = pd.DataFrame(wallet_summary).sort_values(by=['Token', 'Amount'], ascending=[True, False])
 
         # Write both sheets to the same Excel file
         with pd.ExcelWriter(file_name) as writer:
@@ -365,55 +365,6 @@ def export_winners_to_excel(from_date, to_date):
     else:
         results.append("No data found for the entire range of pages.")
 
-def fetch_data_for_page(event_id, page, retries=3, delay=5):
-    for attempt in range(retries):
-        try:
-            print(f"Calling API for page {page} of event {event_id}... (Attempt {attempt + 1})")
-            params = {
-                "key": "DAC-private-private-!!!",
-                "event": event_id,
-                "page": page
-            }
-            
-            response = requests.get(USER_DO_QUEST_URL, params=params)
-            if response.status_code == 200:
-                try:
-                    data = response.json().get('data', {})
-                    user_data = data.get('data', [])
-                    
-                    real_user_count = 0
-                    user_ic_count = 0
-                    bot_count = 0
-                    
-                    for user_entry in user_data:
-                        user_info = user_entry.get('user', {})
-                        if user_info.get('isBot', False):
-                            bot_count += 1
-                        else:
-                            real_user_count += 1
-                            if user_info.get('ic', 0) > 0:
-                                user_ic_count += 1
-                                
-                    print(f"Data successfully returned for page {page} of event {event_id}.")
-                    return (real_user_count, user_ic_count, bot_count)
-                except Exception as e:
-                    print(f"Error processing data for event {event_id}, page {page}: {str(e)}")
-                    return (0, 0, 0)
-            else:
-                print(f"Failed to fetch data for event {event_id}, page {page}. Status code: {response.status_code}")
-                if response.status_code == 524:
-                    print("Encountered a timeout error. Retrying...")
-                    time.sleep(delay)
-                else:
-                    print(f"Error message: {response.text}")
-                    return (0, 0, 0)
-        except requests.exceptions.RequestException as e:
-            print(f"Request failed for page {page} of event {event_id}. Error: {str(e)}")
-            time.sleep(delay)
-
-    # Nếu đã thử đủ số lần mà vẫn không thành công
-    print(f"Failed to fetch data for event {event_id}, page {page} after {retries} attempts.")
-    return (0, 0, 0)
 
 def export_user_do_quest_to_excel(event_configurations):
     all_rows = []
@@ -425,35 +376,47 @@ def export_user_do_quest_to_excel(event_configurations):
             "event": event_id
         }
 
-        # Tính toán số trang tối đa (max_page)
+        # Tính toán số trang tối đa (max_page) bằng cách lấy count từ trang đầu tiên
         response = requests.get(USER_DO_QUEST_URL, params=params)
         if response.status_code == 200:
             data = response.json().get('data', {})
             count = data.get('count', 0)
-            max_page = (count // 12) + (1 if count % 12 > 0 else 0)
+            max_page = (count // 100) + (1 if count % 100 > 0 else 0)
         else:
-            print(f"Failed to fetch initial data for event {event_id}. Status code: {response.status_code}")
-            print(f"Error message: {response.text}")
+            results.append(f"Failed to fetch initial data for event {event_id}. Status code: {response.status_code}")
+            results.append(f"Error message: {response.text}")
             continue
 
-        # Điều chỉnh số lượng workers theo max_page
-        workers = min(max_page, 50)
-        print(f"Loading data from event {event_id} with {max_page} pages using {workers} workers.")
-
+        # Khởi tạo các biến để lưu trữ kết quả tạm thời cho event_id
         real_user_count = 0
         user_ic_count = 0
         bot_count = 0
+        print(f"Loading data from event {event_id} have {max_page}")
 
-        # Sử dụng ThreadPoolExecutor để gọi API đồng thời với số lượng workers điều chỉnh
-        with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as executor:
-            future_to_page = {executor.submit(fetch_data_for_page, event_id, page): page for page in range(max_page)}
-
-            # Xử lý dữ liệu trả về từ từng trang sau khi tất cả các luồng đã hoàn thành
-            for future in concurrent.futures.as_completed(future_to_page):
-                real_user, user_ic, bot = future.result()
-                real_user_count += real_user
-                user_ic_count += user_ic
-                bot_count += bot
+        # Gọi API theo từng trang và tổng hợp dữ liệu
+        for page in range(max_page):
+            params.update({"page": page})
+            response = requests.get(USER_DO_QUEST_URL, params=params)
+            print(f"Data page {page}")
+            if response.status_code == 200:
+                try:
+                    data = response.json().get('data', {})
+                    user_data = data.get('data', [])
+                    
+                    for user_entry in user_data:
+                        user_info = user_entry.get('user', {})
+                        if user_info.get('isBot', False):
+                            bot_count += 1
+                        else:
+                            real_user_count += 1
+                            if user_info.get('ic', 0) > 0:
+                                user_ic_count += 1
+                    
+                except Exception as e:
+                    results.append(f"Error processing data for event {event_id}, page {page}: {str(e)}")
+            else:
+                results.append(f"Failed to fetch data for event {event_id}, page {page}. Status code: {response.status_code}")
+                results.append(f"Error message: {response.text}")
 
         # Tính toán tỷ lệ người dùng
         rate_user = real_user_count / (real_user_count + bot_count) if (real_user_count + bot_count) > 0 else 0
@@ -470,11 +433,11 @@ def export_user_do_quest_to_excel(event_configurations):
 
     if all_rows:
         df = pd.DataFrame(all_rows)
-        file_name = f"user_do_quest_{event_id}.xlsx"
+        file_name = f"user_do_quest_{event_id}.xlsx"  # Tạo file Excel với tên cố định hoặc bạn có thể thêm thời gian vào tên file
         df.to_excel(file_name, index=False)
-        print(f"Data has been saved to {file_name}")    
+        results.append(f"Data has been saved to {file_name}")    
     else:
-        print("No data found for the given events.")
+        results.append("No data found for the given events.")
 
 
 def edit_manager_to_community(user, community, action):
@@ -497,6 +460,59 @@ def edit_manager_to_community(user, community, action):
     else:
         results.append(f"Failed to edit manager {user} to community {community}. Status code: {response.status_code}")
         results.append(f"Error message: {response.text}")
+
+
+def check_time_do_quest(event_id, list_address):
+    params = {
+        "key": "DAC-private-private-!!!",
+        "event": event_id
+    }
+
+    # Tính toán số trang tối đa (max_page) bằng cách lấy count từ trang đầu tiên
+    response = requests.get(USER_DO_QUEST_URL, params=params)
+    if response.status_code == 200:
+        try:
+            data = response.json().get('data', {})
+            count = data.get('count', 0)
+            max_page = (count // 100) + (1 if count % 100 > 0 else 0)
+        except ValueError as e:
+            results.append(f"Error decoding JSON response: {e}")
+            return
+    else:
+        results.append(f"Failed to fetch initial data for event {event_id}. Status code: {response.status_code}")
+        results.append(f"Error message: {response.text}")
+        return
+
+    print(f"Loading data from event {event_id} with {max_page} pages")
+
+    # Gọi API theo từng trang và kiểm tra địa chỉ
+    for page in range(max_page):
+        params.update({"page": page})
+        response = requests.get(USER_DO_QUEST_URL, params=params)
+        print(f"Data page {page}")
+        if response.status_code == 200:
+            try:
+                page_data = response.json().get('data', {}).get('data', [])
+                if not isinstance(page_data, list):
+                    results.append(f"Unexpected data format: {page_data}")
+                    continue
+
+                for entry in page_data:
+                    user_info = entry.get('user', {})
+                    address = user_info.get('address', '')
+                    ic = user_info.get('ic', '')
+                    created_at = entry.get('createdAt', '')
+
+                    if address in list_address:
+                        results.append(f"Address: {address} \nCreated At: {created_at} \nIC: {ic}")
+            except ValueError as e:
+                results.append(f"Error decoding JSON response: {e}")
+            except Exception as e:
+                results.append(f"Error processing data for event {event_id}, page {page}: {str(e)}")
+        else:
+            results.append(f"Failed to fetch data for event {event_id}, page {page}. Status code: {response.status_code}")
+            results.append(f"Error message: {response.text}")
+
 
 def check_point_user(user, event_id):
     payload = {
@@ -523,23 +539,17 @@ def check_point_user(user, event_id):
             results.append(f"Points from Referrals: {point_from_ref}")
             results.append(f"Total Referrals: {total_ref}")
 
-            if ref_histories:
-                results.append("Referral Histories:")
-                for ref in ref_histories:
-                    ref_user = ref.get('user', {})
-                    ref_user_address = ref_user.get('address', 'No address available')
-                    ref_user_username = ref_user.get('username', 'No username available')
-                    inviter_id = ref.get('inviter', 'No inviter available')
-                    ref_event_id = ref.get('event', 'No event available')
-
-                    results.append(f"  - User Address: {ref_user_address}, Username: {ref_user_username}")
-                    results.append(f"    Inviter ID: {inviter_id}, Event ID: {ref_event_id}")
-            else:
-                results.append("No referral histories available.")
+            # Tạo list_address từ refHistories
+            list_address = [ref.get('user', {}).get('address', 'No address available') for ref in ref_histories]
+            
+            # Gọi hàm check_time_do_quest với list_address
+            check_time_do_quest(event_id, list_address)
+            
         else:
             results.append(f"Failed to retrieve points. Response was unsuccessful. Data: {data}")
     else:
         results.append(f"Failed to retrieve points. Status code: {response.status_code}. Error message: {response.text}")
+
 
 
 def ask_user_action():
@@ -593,7 +603,7 @@ def ask_user_action():
     ttk.Radiobutton(event_actions_frame, text="Add Random Bot All Events", variable=action, value=4).pack(anchor=tk.W)
 
     # Excel Actions
-    # ttk.Radiobutton(excel_actions_frame, text="Check Point User", variable=action, value=8).pack(anchor=tk.W)
+    ttk.Radiobutton(excel_actions_frame, text="Check Point User", variable=action, value=8).pack(anchor=tk.W)
     ttk.Radiobutton(excel_actions_frame, text="Export Refund Reward to Excel", variable=action, value=5).pack(anchor=tk.W)
     ttk.Radiobutton(excel_actions_frame, text="Export Reward Winner to Excel", variable=action, value=9).pack(anchor=tk.W)
     ttk.Radiobutton(excel_actions_frame, text="Export User Do Quest to Excel", variable=action, value=11).pack(anchor=tk.W)
