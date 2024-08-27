@@ -2,8 +2,6 @@ import requests
 from itertools import chain
 import random
 import math
-import time
-import concurrent.futures
 import tkinter as tk
 from tkinter import ttk, messagebox
 import pandas as pd
@@ -24,6 +22,7 @@ USER_DO_QUEST_URL = f"{EVENT_URL}userDoQuest"
 REFUND_REWARD_URL = f"{BASE_URL}refundReward"
 EDIT_USER_COMMUNITY_URL = f"{COMMUNITY_URL}private/manager"
 CHECK_POINT = f"{EVENT_URL}private/userPoint"
+UPDATE_POINT = f"{EVENT_URL}userPoint"
 
 # Results storage
 results = []
@@ -550,12 +549,75 @@ def check_point_user(user, event_id):
     else:
         results.append(f"Failed to retrieve points. Status code: {response.status_code}. Error message: {response.text}")
 
+def list_user_is_bot(event_id, amount):
+    user_is_bot = []
+    page = 0
+
+    while len(user_is_bot) < amount:
+        params = {
+            "key": API_KEY,
+            "event": event_id,
+            "page": page
+        }
+        
+        response = requests.get(USER_DO_QUEST_URL, params=params)
+        
+        if response.status_code == 200:
+            try:
+                data = response.json().get('data', {})
+                users = data.get('data', [])
+                
+                for user_entry in users:
+                    user_info = user_entry.get('user', {})
+                    if user_info.get('isBot', False):
+                        user_is_bot.append(user_info.get('address', ''))
+
+                    if len(user_is_bot) >= amount:
+                        break
+
+            except Exception as e:
+                results.append(f"Error processing data for page {page}: {str(e)}")
+                break
+
+        else:
+            results.append(f"Failed to fetch data for page {page}. Status code: {response.status_code}")
+            results.append(f"Error message: {response.text}")
+            break
+
+        page += 1
+    return user_is_bot  # Trả về danh sách ví bot
+
+def update_point_user(event_id, amount, min_value, max_value):
+    # Bước 1: Lấy danh sách các ví bot thông qua hàm list_user_is_bot
+    list_wallet = list_user_is_bot(event_id, amount)
+    
+    if not list_wallet:
+        results.append("No bot users found to update points.")
+        return
+    
+    # Bước 2: Gọi API UPDATE_POINT cho từng ví bot trong danh sách
+    for wallet in list_wallet:
+        # Tạo số ngẫu nhiên trong khoảng từ min_value đến max_value, chia hết cho 10
+        number = random.randrange(min_value, max_value + 1, 10)
+        payload = {
+            "event": event_id,
+            "user": wallet,
+            "point": number
+        }
+        
+        response = requests.post(UPDATE_POINT, json=payload, params={"key": API_KEY}, headers={"Content-Type": "application/json"})
+        
+        if response.status_code == 200:
+            results.append(f"Successfully updated {number} points for wallet {wallet}.")
+        else:
+            results.append(f"Failed to update points for wallet {wallet}. Status code: {response.status_code}")
+            results.append(f"Error message: {response.text}")
 
 
 def ask_user_action():
     root = tk.Tk()
     root.title("Choose Action")
-    root.geometry("600x700")
+    root.geometry("600x800")
     root.configure(bg="#f0f0f0")
     root.resizable(False, False)
 
@@ -567,7 +629,6 @@ def ask_user_action():
     style = ttk.Style()
     style.configure("TRadiobutton", background="#f0f0f0", font=("Helvetica", 12))
 
-    # Frames for different action groups
     event_actions_frame = tk.LabelFrame(root, text="Action to Event", bg="#f0f0f0", font=("Helvetica", 14), padx=10, pady=10)
     event_actions_frame.pack(pady=10, fill="x")
 
@@ -589,26 +650,25 @@ def ask_user_action():
             8: "user, event_id",
             9: "from, to",
             10: "event_id",
-            11: "event_id"
+            11: "event_id",
+            12: "event_id, amount, min, max"  # Cập nhật placeholder cho option "Update Point User"
         }.get(action.get(), "")
         config_input.delete("1.0", tk.END)
         config_input.insert("1.0", placeholder_text)
 
     action.trace("w", update_placeholder)
 
-    # Event Actions
     ttk.Radiobutton(event_actions_frame, text="Create Bot On Top All Events", variable=action, value=1).pack(anchor=tk.W)
     ttk.Radiobutton(event_actions_frame, text="Stop Add Bot All Events", variable=action, value=2).pack(anchor=tk.W)
     ttk.Radiobutton(event_actions_frame, text="Random Winner All Events", variable=action, value=3).pack(anchor=tk.W)
     ttk.Radiobutton(event_actions_frame, text="Add Random Bot All Events", variable=action, value=4).pack(anchor=tk.W)
+    ttk.Radiobutton(event_actions_frame, text="Update Point User", variable=action, value=12).pack(anchor=tk.W)  # Đổi tên option
 
-    # Excel Actions
     ttk.Radiobutton(excel_actions_frame, text="Check Point User", variable=action, value=8).pack(anchor=tk.W)
     ttk.Radiobutton(excel_actions_frame, text="Export Refund Reward to Excel", variable=action, value=5).pack(anchor=tk.W)
     ttk.Radiobutton(excel_actions_frame, text="Export Reward Winner to Excel", variable=action, value=9).pack(anchor=tk.W)
     ttk.Radiobutton(excel_actions_frame, text="Export User Do Quest to Excel", variable=action, value=11).pack(anchor=tk.W)
 
-    # Community Actions
     ttk.Radiobutton(community_actions_frame, text="Add manager to Community", variable=action, value=6).pack(anchor=tk.W)
     ttk.Radiobutton(community_actions_frame, text="Delete manager to Community", variable=action, value=7).pack(anchor=tk.W)
 
@@ -617,6 +677,7 @@ def ask_user_action():
 
     config_input = tk.Text(root, height=5, width=40)
     config_input.pack(pady=10)
+
     def on_submit():
         config_data = config_input.get("1.0", tk.END).strip()
         global event_configurations, results
@@ -627,7 +688,7 @@ def ask_user_action():
 
         if action.get() in [5, 9]:
             if len(config_parts) != 2:
-                messagebox.showerror("Input Error", "Please provide  from, to in the format 'from, to'.")
+                messagebox.showerror("Input Error", "Please provide from, to in the format 'from, to'.")
                 return
 
             from_date = config_parts[0].strip()
@@ -656,6 +717,17 @@ def ask_user_action():
             user = config_parts[0].strip()
             event_id = config_parts[1].strip()
             check_point_user(user, event_id)
+
+        elif action.get() == 12:
+            if len(config_parts) != 4:
+                messagebox.showerror("Input Error", "Please provide event_id, amount, min, max in the format 'event_id, amount, min, max'.")
+                return
+
+            event_id = config_parts[0].strip()
+            amount = int(config_parts[1].strip())
+            min_value = int(config_parts[2].strip())
+            max_value = int(config_parts[3].strip())
+            update_point_user(event_id, amount, min_value, max_value)
 
         else:
             event_configurations = []
@@ -687,6 +759,7 @@ def ask_user_action():
     submit_button.pack(pady=10)
 
     root.mainloop()
+
 
 def show_results():
     result_window = tk.Tk()
