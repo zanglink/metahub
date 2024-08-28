@@ -1,4 +1,5 @@
 import requests
+import logging
 from itertools import chain
 import random
 import math
@@ -7,6 +8,19 @@ from tkinter import ttk, messagebox
 import pandas as pd
 from datetime import datetime
 from collections import defaultdict
+
+# Cấu hình logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler("app.log"),
+        logging.StreamHandler()
+    ]
+)
+
+# Tạo logger
+logger = logging.getLogger(__name__)
 
 # URLs and API key
 API_KEY = "DAC-private-private-!!!"
@@ -24,19 +38,16 @@ EDIT_USER_COMMUNITY_URL = f"{COMMUNITY_URL}private/manager"
 CHECK_POINT = f"{EVENT_URL}private/userPoint"
 UPDATE_POINT = f"{EVENT_URL}userPoint"
 
-# Results storage
-results = []
-
 def create_event(event_id):
     payload = {"event": event_id}
     response = requests.post(CREATE_URL, json=payload, params={"key": API_KEY}, headers={"Content-Type": "application/json"})
     
     if response.status_code == 200:
-        results.append(f"Event {event_id} created successfully.")
+        logger.info(f"Event {event_id} created successfully.")
         return response.json()
     else:
-        results.append(f"Failed to create event {event_id}. Status code: {response.status_code}")
-        results.append(f"Error message: {response.text}")
+        logger.error(f"Failed to create event {event_id}. Status code: {response.status_code}")
+        logger.error(f"Error message: {response.text}")
         return None
 
 def get_addresses(event_id):
@@ -45,16 +56,14 @@ def get_addresses(event_id):
     if response.status_code == 200:
         data = response.json()
         if data['success']:
-            # Chỉ thêm những user có 'ic' lớn hơn 0
             return [user['user']['address'] for user in data['data'] if user['user'].get('ic', 0) > 0]
         else:
-            results.append(f"API response unsuccessful for event {event_id}.")
+            logger.error(f"API response unsuccessful for event {event_id}.")
             return []
     else:
-        results.append(f"Failed to fetch data for event {event_id}. Status code: {response.status_code}")
-        results.append(f"Error message: {response.text}")
+        logger.error(f"Failed to fetch data for event {event_id}. Status code: {response.status_code}")
+        logger.error(f"Error message: {response.text}")
         return []
-
 
 def select_random_addresses(addresses, count):
     return random.sample(addresses, count) if len(addresses) >= count else addresses
@@ -86,13 +95,13 @@ def set_random_winners(event_id, addresses):
     if response.status_code == 200:
         data = response.json()
         if data['success']:
-            results.append(f"Successfully set random winners for event {event_id}.")
+            logger.info(f"Successfully set random winners for event {event_id}.")
         else:
-            results.append(f"Failed to set random winners for event {event_id}. Response was unsuccessful.")
-            results.append(f"Error message: {data}")
+            logger.error(f"Failed to set random winners for event {event_id}. Response was unsuccessful.")
+            logger.error(f"Error message: {data}")
     else:
-        results.append(f"Failed to set random winners for event {event_id}. Status code: {response.status_code}")
-        results.append(f"Error message: {response.text}")
+        logger.error(f"Failed to set random winners for event {event_id}. Status code: {response.status_code}")
+        logger.error(f"Error message: {response.text}")
 
 def process_events(event_configurations):
     for config in event_configurations:
@@ -104,20 +113,20 @@ def process_events(event_configurations):
             selected_addresses = select_random_addresses(addresses, count)
             filtered_address_a = filter_addresses(additional_addresses, addresses)
             selected_addresses = replace_addresses(filtered_address_a, selected_addresses)
-            results.append(f"Selected addresses for event {event_id}: {selected_addresses}")
+            logger.info(f"Selected addresses for event {event_id}: {selected_addresses}")
             set_random_winners(event_id, selected_addresses)
         else:
-            results.append(f"No addresses found for event {event_id}")
+            logger.warning(f"No addresses found for event {event_id}")
 
 def stop_add_bot(event_id):
     payload = {"event": event_id, "status": True}
     response = requests.patch(STOP_ADD_BOT_URL, json=payload, params={"key": API_KEY}, headers={"Content-Type": "application/json"})
     
     if response.status_code == 200:
-        results.append(f"Successfully stopped adding bot for event {event_id}.")
+        logger.info(f"Successfully stopped adding bot for event {event_id}.")
     else:
-        results.append(f"Failed to stop adding bot for event {event_id}. Status code: {response.status_code}")
-        results.append(f"Error message: {response.text}")
+        logger.error(f"Failed to stop adding bot for event {event_id}. Status code: {response.status_code}")
+        logger.error(f"Error message: {response.text}")
 
 def create_all_events(event_configurations):
     for config in event_configurations:
@@ -137,13 +146,12 @@ def add_random_bot(event_id, count):
         response = requests.post(ADD_BOT_URL, json=payload, params={"key": API_KEY}, headers={"Content-Type": "application/json"})
         
         if response.status_code == 200:
-            results.append(f"Successfully added {current_chunk_size} random bots for event {event_id}.")
+            logger.info(f"Successfully added {current_chunk_size} random bots for event {event_id}.")
         else:
-            results.append(f"Failed to add {current_chunk_size} random bots for event {event_id}. Status code: {response.status_code}")
-            results.append(f"Error message: {response.text}")
+            logger.error(f"Failed to add {current_chunk_size} random bots for event {event_id}. Status code: {response.status_code}")
+            logger.error(f"Error message: {response.text}")
         
         count -= current_chunk_size
-
 
 def add_random_bot_all_events(event_configurations):
     for config in event_configurations:
@@ -154,11 +162,9 @@ def format_date(date_str):
 
 def calculate_percentage(a, b):
     try:
-        # Tính % của a trên b và làm tròn đến 2 chữ số thập phân
         percentage = round((a / b) * 100, 2)
         return percentage
     except (ZeroDivisionError, TypeError):
-        # Nếu xảy ra lỗi chia cho 0 hoặc giá trị không hợp lệ, trả về 0
         return 0
 
 def export_refund_reward_to_excel(from_date, to_date):
@@ -171,11 +177,10 @@ def export_refund_reward_to_excel(from_date, to_date):
         'Total Bot Refund': 0
     })
 
-    # Initial API call to get the count and determine max_page
     initial_params = {
         "from": format_date(from_date),
         "to": format_date(to_date),
-        "page": 0,  # Start from the first page
+        "page": 0,
         "key": API_KEY
     }
     
@@ -187,7 +192,6 @@ def export_refund_reward_to_excel(from_date, to_date):
             count = initial_data.get('count', 0)
             max_page = math.floor(count / 12)
             
-            # Fetch all pages
             for page in range(max_page + 1):
                 params = {
                     "from": format_date(from_date),
@@ -203,7 +207,6 @@ def export_refund_reward_to_excel(from_date, to_date):
                         data = response.json().get('data', {}).get('data', [])
                         if data:
                             for event_data in data:
-                                # Add to the main sheet
                                 all_rows.append({
                                     'ID': event_data.get('eventId', ''),
                                     'Event ID': event_data.get('event', ''),
@@ -222,7 +225,6 @@ def export_refund_reward_to_excel(from_date, to_date):
                                     )
                                 })
                                 
-                                # Update the token summary data
                                 token = event_data.get('token', '')
                                 token_summary[token]['Chain'] = event_data.get('chain', '')
                                 token_summary[token]['Total Fund Token Amount'] += event_data.get('totalFundTokenAmount', 0)
@@ -230,21 +232,19 @@ def export_refund_reward_to_excel(from_date, to_date):
                                 token_summary[token]['Total User Reward'] += event_data.get('totalUserReward', 0)
                                 token_summary[token]['Total Bot Refund'] += event_data.get('totalBotRefund', 0)
                         else:
-                            results.append(f"No data found for page {page}.")
+                            logger.warning(f"No data found for page {page}.")
                     except Exception as e:
-                        results.append(f"Error processing data for page {page}: {str(e)}")
+                        logger.error(f"Error processing data for page {page}: {str(e)}")
                 else:
-                    results.append(f"Failed to fetch data for page {page}. Status code: {response.status_code}")
-                    results.append(f"Error message: {response.text}")
+                    logger.error(f"Failed to fetch data for page {page}. Status code: {response.status_code}")
+                    logger.error(f"Error message: {response.text}")
         
             if all_rows:
-                # Sort all rows by 'ID'
                 all_rows = sorted(all_rows, key=lambda x: x['ID'])
 
                 df_main = pd.DataFrame(all_rows)
                 file_name = f"refund_reward_{from_date}_{to_date}_pages_0_to_{max_page}.xlsx"
                 
-                # Prepare the token summary sheet
                 token_summary_rows = [
                     {
                         '#': i + 1,
@@ -259,21 +259,19 @@ def export_refund_reward_to_excel(from_date, to_date):
                 ]
                 df_summary = pd.DataFrame(token_summary_rows)
 
-                # Write both sheets to the same Excel file
                 with pd.ExcelWriter(file_name) as writer:
                     df_main.to_excel(writer, sheet_name='Refund Reward', index=False)
                     df_summary.to_excel(writer, sheet_name='Token Summary', index=False)
                 
-                results.append(f"Data has been saved to {file_name}")
+                logger.info(f"Data has been saved to {file_name}")
             else:
-                results.append("No data found for the entire range of pages.")
+                logger.warning("No data found for the entire range of pages.")
                 
         except Exception as e:
-            results.append(f"Error processing initial data: {str(e)}")
+            logger.error(f"Error processing initial data: {str(e)}")
     else:
-        results.append(f"Failed to fetch initial data. Status code: {initial_response.status_code}")
-        results.append(f"Error message: {initial_response.text}")
-
+        logger.error(f"Failed to fetch initial data. Status code: {initial_response.status_code}")
+        logger.error(f"Error message: {initial_response.text}")
 
 def export_winners_to_excel(from_date, to_date):
     all_rows = []
@@ -311,7 +309,6 @@ def export_winners_to_excel(from_date, to_date):
                                             if index < len(event_data.get('topBonusAmount', []))
                                             else event_data.get('randomBonusAmount', 0))
 
-                            # Accumulate data for the main sheet
                             all_rows.append({
                                 'ID': event_data.get('eventId', ''),
                                 'Event ID': event_data.get('event', ''),
@@ -323,13 +320,11 @@ def export_winners_to_excel(from_date, to_date):
                                 'Reward Type': 'Top' if index < len(event_data.get('topBonusAmount', [])) else 'Random'
                             })
 
-                            # Accumulate wallet data for the new sheet
                             if (wallet, token) in wallet_data:
                                 wallet_data[(wallet, token)] += bonus_amount
                             else:
                                 wallet_data[(wallet, token)] = bonus_amount
 
-                # Calculate the maximum page and stop when done
                 max_page = (count + len(page_data) - 1) // len(page_data)
                 if page >= max_page:
                     break
@@ -337,33 +332,29 @@ def export_winners_to_excel(from_date, to_date):
                 page += 1
 
             except Exception as e:
-                results.append(f"Error processing data for page {page}: {str(e)}")
+                logger.error(f"Error processing data for page {page}: {str(e)}")
                 break
         else:
-            results.append(f"Failed to fetch data for page {page}. Status code: {response.status_code}")
-            results.append(f"Error message: {response.text}")
+            logger.error(f"Failed to fetch data for page {page}. Status code: {response.status_code}")
+            logger.error(f"Error message: {response.text}")
             break
 
     if all_rows:
-        # Sort the main data by ID before exporting
         all_rows = sorted(all_rows, key=lambda x: x['ID'])
         df_main = pd.DataFrame(all_rows)
         file_name = f"winners_{from_date}_{to_date}.xlsx"
         
-        # Prepare the wallet summary sheet and sort by Token (ascending) and Amount (descending)
         wallet_summary = [{'#': i+1, 'Wallet': wallet, 'Amount': amount, 'Token': token}
                           for i, ((wallet, token), amount) in enumerate(wallet_data.items())]
         df_summary = pd.DataFrame(wallet_summary).sort_values(by=['Token', 'Amount'], ascending=[True, False])
 
-        # Write both sheets to the same Excel file
         with pd.ExcelWriter(file_name) as writer:
             df_main.to_excel(writer, sheet_name='Winners', index=False)
             df_summary.to_excel(writer, sheet_name='Wallet Summary', index=False)
         
-        results.append(f"Data has been saved to {file_name}")
+        logger.info(f"Data has been saved to {file_name}")
     else:
-        results.append("No data found for the entire range of pages.")
-
+        logger.warning("No data found for the entire range of pages.")
 
 def export_user_do_quest_to_excel(event_configurations):
     all_rows = []
@@ -371,32 +362,29 @@ def export_user_do_quest_to_excel(event_configurations):
     for event_config in event_configurations:
         event_id = event_config.get("event_id", "")
         params = {
-            "key": "DAC-private-private-!!!",
+            "key": API_KEY,
             "event": event_id
         }
 
-        # Tính toán số trang tối đa (max_page) bằng cách lấy count từ trang đầu tiên
         response = requests.get(USER_DO_QUEST_URL, params=params)
         if response.status_code == 200:
             data = response.json().get('data', {})
             count = data.get('count', 0)
             max_page = (count // 100) + (1 if count % 100 > 0 else 0)
         else:
-            results.append(f"Failed to fetch initial data for event {event_id}. Status code: {response.status_code}")
-            results.append(f"Error message: {response.text}")
+            logger.error(f"Failed to fetch initial data for event {event_id}. Status code: {response.status_code}")
+            logger.error(f"Error message: {response.text}")
             continue
 
-        # Khởi tạo các biến để lưu trữ kết quả tạm thời cho event_id
         real_user_count = 0
         user_ic_count = 0
         bot_count = 0
-        print(f"Loading data from event {event_id} have {max_page}")
+        logger.info(f"Loading data from event {event_id} with {max_page} pages")
 
-        # Gọi API theo từng trang và tổng hợp dữ liệu
         for page in range(max_page):
             params.update({"page": page})
             response = requests.get(USER_DO_QUEST_URL, params=params)
-            print(f"Data page {page}")
+            logger.info(f"Processing data page {page}")
             if response.status_code == 200:
                 try:
                     data = response.json().get('data', {})
@@ -412,15 +400,13 @@ def export_user_do_quest_to_excel(event_configurations):
                                 user_ic_count += 1
                     
                 except Exception as e:
-                    results.append(f"Error processing data for event {event_id}, page {page}: {str(e)}")
+                    logger.error(f"Error processing data for event {event_id}, page {page}: {str(e)}")
             else:
-                results.append(f"Failed to fetch data for event {event_id}, page {page}. Status code: {response.status_code}")
-                results.append(f"Error message: {response.text}")
+                logger.error(f"Failed to fetch data for event {event_id}, page {page}. Status code: {response.status_code}")
+                logger.error(f"Error message: {response.text}")
 
-        # Tính toán tỷ lệ người dùng
         rate_user = real_user_count / (real_user_count + bot_count) if (real_user_count + bot_count) > 0 else 0
         
-        # Thêm dữ liệu vào all_rows sau khi đã tổng hợp tất cả các trang
         all_rows.append({
             'Event ID': event_id,
             'Total User': real_user_count + bot_count,
@@ -432,12 +418,11 @@ def export_user_do_quest_to_excel(event_configurations):
 
     if all_rows:
         df = pd.DataFrame(all_rows)
-        file_name = f"user_do_quest_{event_id}.xlsx"  # Tạo file Excel với tên cố định hoặc bạn có thể thêm thời gian vào tên file
+        file_name = f"user_do_quest_{event_id}.xlsx"
         df.to_excel(file_name, index=False)
-        results.append(f"Data has been saved to {file_name}")    
+        logger.info(f"Data has been saved to {file_name}")    
     else:
-        results.append("No data found for the given events.")
-
+        logger.warning("No data found for the given events.")
 
 def edit_manager_to_community(user, community, action):
     payload = {
@@ -452,18 +437,18 @@ def edit_manager_to_community(user, community, action):
     if response.status_code == 200:
         data = response.json()
         if data['success']:
-            results.append(f"Successfully edited manager {user} to community {community}.")
+            logger.info(f"Successfully edited manager {user} to community {community}.")
         else:
-            results.append(f"Failed to edit manager {user} to community {community}. Response was unsuccessful.")
-            results.append(f"Error message: {data}")
+            logger.error(f"Failed to edit manager {user} to community {community}. Response was unsuccessful.")
+            logger.error(f"Error message: {data}")
     else:
-        results.append(f"Failed to edit manager {user} to community {community}. Status code: {response.status_code}")
-        results.append(f"Error message: {response.text}")
+        logger.error(f"Failed to edit manager {user} to community {community}. Status code: {response.status_code}")
+        logger.error(f"Error message: {response.text}")
 
 
 def check_time_do_quest(event_id, list_address):
     params = {
-        "key": "DAC-private-private-!!!",
+        "key": API_KEY,
         "event": event_id
     }
 
@@ -475,25 +460,26 @@ def check_time_do_quest(event_id, list_address):
             count = data.get('count', 0)
             max_page = (count // 100) + (1 if count % 100 > 0 else 0)
         except ValueError as e:
-            results.append(f"Error decoding JSON response: {e}")
+            logger.error(f"Error decoding JSON response: {e}")
             return
     else:
-        results.append(f"Failed to fetch initial data for event {event_id}. Status code: {response.status_code}")
-        results.append(f"Error message: {response.text}")
+        logger.error(f"Failed to fetch initial data for event {event_id}. Status code: {response.status_code}")
+        logger.error(f"Error message: {response.text}")
         return
 
-    print(f"Loading data from event {event_id} with {max_page} pages")
+    logger.info(f"Loading data from event {event_id} with {max_page} pages")
 
     # Gọi API theo từng trang và kiểm tra địa chỉ
     for page in range(max_page):
         params.update({"page": page})
         response = requests.get(USER_DO_QUEST_URL, params=params)
-        print(f"Data page {page}")
+        logger.info(f"Processing data page {page}")
         if response.status_code == 200:
             try:
                 page_data = response.json().get('data', {}).get('data', [])
+
                 if not isinstance(page_data, list):
-                    results.append(f"Unexpected data format: {page_data}")
+                    logger.error(f"Unexpected data format: {page_data}")
                     continue
 
                 for entry in page_data:
@@ -503,15 +489,15 @@ def check_time_do_quest(event_id, list_address):
                     created_at = entry.get('createdAt', '')
 
                     if address in list_address:
-                        results.append(f"Address: {address} \nCreated At: {created_at} \nIC: {ic}")
-            except ValueError as e:
-                results.append(f"Error decoding JSON response: {e}")
-            except Exception as e:
-                results.append(f"Error processing data for event {event_id}, page {page}: {str(e)}")
-        else:
-            results.append(f"Failed to fetch data for event {event_id}, page {page}. Status code: {response.status_code}")
-            results.append(f"Error message: {response.text}")
+                        logger.info(f"Address: {address} \nCreated At: {created_at} \nIC: {ic}")
 
+            except ValueError as e:
+                logger.error(f"Error decoding JSON response: {e}")
+            except Exception as e:
+                logger.error(f"Error processing data for event {event_id}, page {page}: {str(e)}")
+        else:
+            logger.error(f"Failed to fetch data for event {event_id}, page {page}. Status code: {response.status_code}")
+            logger.error(f"Error message: {response.text}")
 
 def check_point_user(user, event_id):
     payload = {
@@ -531,23 +517,19 @@ def check_point_user(user, event_id):
             total_ref = points_data.get('totalRef', 'No total ref available')
             ref_histories = points_data.get('refHistories', [])
 
-            # Show data into results
-            results.append(f"User: {user}, Event: {event_id}")
-            results.append(f"Total Points: {total_point}")
-            results.append(f"Points from Event: {point_from_event}")
-            results.append(f"Points from Referrals: {point_from_ref}")
-            results.append(f"Total Referrals: {total_ref}")
+            logger.info(f"User: {user}, Event: {event_id}")
+            logger.info(f"Total Points: {total_point}")
+            logger.info(f"Points from Event: {point_from_event}")
+            logger.info(f"Points from Referrals: {point_from_ref}")
+            logger.info(f"Total Referrals: {total_ref}")
 
-            # Tạo list_address từ refHistories
             list_address = [ref.get('user', {}).get('address', 'No address available') for ref in ref_histories]
-            
-            # Gọi hàm check_time_do_quest với list_address
             check_time_do_quest(event_id, list_address)
             
         else:
-            results.append(f"Failed to retrieve points. Response was unsuccessful. Data: {data}")
+            logger.error(f"Failed to retrieve points. Response was unsuccessful. Data: {data}")
     else:
-        results.append(f"Failed to retrieve points. Status code: {response.status_code}. Error message: {response.text}")
+        logger.error(f"Failed to retrieve points. Status code: {response.status_code}. Error message: {response.text}")
 
 def list_user_is_bot(event_id, amount):
     user_is_bot = []
@@ -576,28 +558,25 @@ def list_user_is_bot(event_id, amount):
                         break
 
             except Exception as e:
-                results.append(f"Error processing data for page {page}: {str(e)}")
+                logger.error(f"Error processing data for page {page}: {str(e)}")
                 break
 
         else:
-            results.append(f"Failed to fetch data for page {page}. Status code: {response.status_code}")
-            results.append(f"Error message: {response.text}")
+            logger.error(f"Failed to fetch data for page {page}. Status code: {response.status_code}")
+            logger.error(f"Error message: {response.text}")
             break
 
         page += 1
-    return user_is_bot  # Trả về danh sách ví bot
+    return user_is_bot
 
 def update_point_user(event_id, amount, min_value, max_value):
-    # Bước 1: Lấy danh sách các ví bot thông qua hàm list_user_is_bot
     list_wallet = list_user_is_bot(event_id, amount)
     
     if not list_wallet:
-        results.append("No bot users found to update points.")
+        logger.warning("No bot users found to update points.")
         return
     
-    # Bước 2: Gọi API UPDATE_POINT cho từng ví bot trong danh sách
     for wallet in list_wallet:
-        # Tạo số ngẫu nhiên trong khoảng từ min_value đến max_value, chia hết cho 10
         number = random.randrange(min_value, max_value + 1, 10)
         payload = {
             "event": event_id,
@@ -608,11 +587,10 @@ def update_point_user(event_id, amount, min_value, max_value):
         response = requests.post(UPDATE_POINT, json=payload, params={"key": API_KEY}, headers={"Content-Type": "application/json"})
         
         if response.status_code == 200:
-            results.append(f"Successfully updated {number} points for wallet {wallet}.")
+            logger.info(f"Successfully updated {number} points for wallet {wallet}.")
         else:
-            results.append(f"Failed to update points for wallet {wallet}. Status code: {response.status_code}")
-            results.append(f"Error message: {response.text}")
-
+            logger.error(f"Failed to update points for wallet {wallet}. Status code: {response.status_code}")
+            logger.error(f"Error message: {response.text}")
 
 def ask_user_action():
     root = tk.Tk()
@@ -651,7 +629,7 @@ def ask_user_action():
             9: "from, to",
             10: "event_id",
             11: "event_id",
-            12: "event_id, amount, min, max"  # Cập nhật placeholder cho option "Update Point User"
+            12: "event_id, amount, min, max"
         }.get(action.get(), "")
         config_input.delete("1.0", tk.END)
         config_input.insert("1.0", placeholder_text)
@@ -662,7 +640,7 @@ def ask_user_action():
     ttk.Radiobutton(event_actions_frame, text="Stop Add Bot All Events", variable=action, value=2).pack(anchor=tk.W)
     ttk.Radiobutton(event_actions_frame, text="Random Winner All Events", variable=action, value=3).pack(anchor=tk.W)
     ttk.Radiobutton(event_actions_frame, text="Add Random Bot All Events", variable=action, value=4).pack(anchor=tk.W)
-    ttk.Radiobutton(event_actions_frame, text="Update Point User", variable=action, value=12).pack(anchor=tk.W)  # Đổi tên option
+    ttk.Radiobutton(event_actions_frame, text="Update Point User", variable=action, value=12).pack(anchor=tk.W)
 
     ttk.Radiobutton(excel_actions_frame, text="Check Point User", variable=action, value=8).pack(anchor=tk.W)
     ttk.Radiobutton(excel_actions_frame, text="Export Refund Reward to Excel", variable=action, value=5).pack(anchor=tk.W)
@@ -680,9 +658,8 @@ def ask_user_action():
 
     def on_submit():
         config_data = config_input.get("1.0", tk.END).strip()
-        global event_configurations, results
+        global event_configurations
         event_configurations = []
-        results = []
         
         config_parts = config_data.split(',')
 
@@ -750,7 +727,7 @@ def ask_user_action():
             elif action.get() == 11:
                 export_user_do_quest_to_excel(event_configurations)
             else:
-                results.append("Invalid action")
+                logger.error("Invalid action")
 
         show_results()
         root.quit()
@@ -760,21 +737,38 @@ def ask_user_action():
 
     root.mainloop()
 
-
 def show_results():
     result_window = tk.Tk()
     result_window.title("Results")
-    result_window.geometry("600x400")
+    result_window.geometry("800x400")
     result_window.configure(bg="#f0f0f0")
     result_window.resizable(False, False)
 
-    result_text = tk.Text(result_window, wrap=tk.WORD, bg="#f0f0f0", font=("Helvetica", 12))
-    result_text.pack(pady=10, padx=10, fill=tk.BOTH, expand=True)
+    # Tạo Treeview để hiển thị kết quả dưới dạng bảng
+    tree = ttk.Treeview(result_window, columns=("Timestamp", "Logger", "Level", "Message"), show='headings')
+    tree.heading("Timestamp", text="Timestamp")
+    tree.heading("Logger", text="Logger")
+    tree.heading("Level", text="Level")
+    tree.heading("Message", text="Message")
 
-    for result in results:
-        result_text.insert(tk.END, result + "\n")
+    # Đặt kích thước cột
+    tree.column("Timestamp", width=150)
+    tree.column("Logger", width=100)
+    tree.column("Level", width=80)
+    tree.column("Message", width=450)
 
-    # Tạo một Frame để chứa nút "Close"
+    # Đặt Treeview vào cửa sổ
+    tree.pack(pady=10, padx=10, fill=tk.BOTH, expand=True)
+
+    # Đọc nội dung từ file log và hiển thị trong bảng
+    with open("app.log", "r") as log_file:
+        for line in log_file:
+            # Mỗi dòng log có định dạng: Timestamp - Logger - Level - Message
+            parts = line.split(" - ", 3)  # Chia thành 4 phần: Timestamp, Logger, Level và Message
+            if len(parts) == 4:
+                tree.insert("", tk.END, values=parts)
+
+    # Tạo Frame chứa nút "Close"
     button_frame = tk.Frame(result_window, bg="#f0f0f0")
     button_frame.pack(side=tk.BOTTOM, pady=10, fill=tk.X)
 

@@ -1,0 +1,17 @@
+2024-08-28 19:28:23,038 - __main__ - INFO - User: LEE01, Event: 66c4590565079ce102def2b8
+2024-08-28 19:28:23,038 - __main__ - INFO - Total Points: 1550
+2024-08-28 19:28:23,038 - __main__ - INFO - Points from Event: 20
+2024-08-28 19:28:23,038 - __main__ - INFO - Points from Referrals: 10
+2024-08-28 19:28:23,038 - __main__ - INFO - Total Referrals: 59
+2024-08-28 19:28:23,243 - __main__ - ERROR - Failed to fetch initial data for event 66c4590565079ce102def2b8. Status code: 404
+2024-08-28 19:28:23,248 - __main__ - ERROR - Error message: {"success":false,"serverCode":1001,"message":"API not found","data":{}}
+2024-08-28 19:31:33,240 - __main__ - INFO - User: RENE, Event: 66c4590565079ce102def2b8
+2024-08-28 19:31:33,240 - __main__ - INFO - Total Points: 1370
+2024-08-28 19:31:33,255 - __main__ - INFO - Points from Event: 20
+2024-08-28 19:31:33,255 - __main__ - INFO - Points from Referrals: 10
+2024-08-28 19:31:33,255 - __main__ - INFO - Total Referrals: 60
+2024-08-28 19:31:33,420 - __main__ - ERROR - Failed to fetch initial data for event 66c4590565079ce102def2b8. Status code: 404
+2024-08-28 19:31:33,420 - __main__ - ERROR - Error message: {"success":false,"serverCode":1001,"message":"API not found","data":{}}
+2024-08-28 19:34:26,640 - __main__ - ERROR - Failed to fetch data for page 0. Status code: 404
+2024-08-28 19:34:26,641 - __main__ - ERROR - Error message: {"success":false,"serverCode":1001,"message":"API not found","data":{}}
+2024-08-28 19:34:26,642 - __main__ - WARNING - No bot users found to update points.
