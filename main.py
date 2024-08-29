@@ -8,6 +8,12 @@ from tkinter import ttk, messagebox
 import pandas as pd
 from datetime import datetime
 from collections import defaultdict
+from concurrent.futures import ThreadPoolExecutor, as_completed
+import tkinter as tk
+from tkinter import ttk, messagebox
+from tkinter.ttk import Progressbar
+import time  # Giả lập thời gian chờ để hiển thị progress bar
+
 
 # Cấu hình logging
 logging.basicConfig(
@@ -167,6 +173,20 @@ def calculate_percentage(a, b):
     except (ZeroDivisionError, TypeError):
         return 0
 
+
+def fetch_page_data(params):
+    try:
+        response = requests.get(REFUND_REWARD_URL, params=params)
+        if response.status_code == 200:
+            return response.json().get('data', {}).get('data', [])
+        else:
+            logger.error(f"Failed to fetch data for page {params['page']}. Status code: {response.status_code}")
+            logger.error(f"Error message: {response.text}")
+            return []
+    except Exception as e:
+        logger.error(f"Exception occurred while fetching data for page {params['page']}: {str(e)}")
+        return []
+
 def export_refund_reward_to_excel(from_date, to_date):
     all_rows = []
     token_summary = defaultdict(lambda: {
@@ -183,68 +203,58 @@ def export_refund_reward_to_excel(from_date, to_date):
         "page": 0,
         "key": API_KEY
     }
-    
+
     initial_response = requests.get(REFUND_REWARD_URL, params=initial_params)
-    
     if initial_response.status_code == 200:
         try:
             initial_data = initial_response.json().get('data', {})
             count = initial_data.get('count', 0)
-            max_page = math.floor(count / 12)
-            
-            for page in range(max_page + 1):
-                params = {
-                    "from": format_date(from_date),
-                    "to": format_date(to_date),
-                    "page": page,
-                    "key": API_KEY
+            max_page = (count + 11) // 12  # Chia cho 12 và làm tròn lên để tính số trang
+
+            with ThreadPoolExecutor(max_workers=10) as executor:  # Sử dụng tối đa 10 luồng song song
+                future_to_page = {
+                    executor.submit(fetch_page_data, {
+                        "from": format_date(from_date),
+                        "to": format_date(to_date),
+                        "page": page,
+                        "key": API_KEY
+                    }): page for page in range(max_page)
                 }
 
-                response = requests.get(REFUND_REWARD_URL, params=params)
-                
-                if response.status_code == 200:
-                    try:
-                        data = response.json().get('data', {}).get('data', [])
-                        if data:
-                            for event_data in data:
-                                all_rows.append({
-                                    'ID': event_data.get('eventId', ''),
-                                    'Event ID': event_data.get('event', ''),
-                                    'Event Title': event_data.get('title', ''),
-                                    'Start Day': event_data.get('start', ''),
-                                    'End Day': event_data.get('end', ''),
-                                    'Token': event_data.get('token', ''),
-                                    'Chain': event_data.get('chain', ''),
-                                    'Total Fund Token Amount': event_data.get('totalFundTokenAmount', 0),
-                                    'Total Refund Amount': event_data.get('totalRefundAmount', 0),
-                                    'Total User Reward': event_data.get('totalUserReward', 0),
-                                    'Total Bot Refund': event_data.get('totalBotRefund', 0),
-                                    'Percent': calculate_percentage(
-                                        event_data.get('totalBotRefund', 0),
-                                        event_data.get('totalFundTokenAmount', 0)
-                                    )
-                                })
-                                
-                                token = event_data.get('token', '')
-                                token_summary[token]['Chain'] = event_data.get('chain', '')
-                                token_summary[token]['Total Fund Token Amount'] += event_data.get('totalFundTokenAmount', 0)
-                                token_summary[token]['Total Refund Amount'] += event_data.get('totalRefundAmount', 0)
-                                token_summary[token]['Total User Reward'] += event_data.get('totalUserReward', 0)
-                                token_summary[token]['Total Bot Refund'] += event_data.get('totalBotRefund', 0)
-                        else:
-                            logger.warning(f"No data found for page {page}.")
-                    except Exception as e:
-                        logger.error(f"Error processing data for page {page}: {str(e)}")
-                else:
-                    logger.error(f"Failed to fetch data for page {page}. Status code: {response.status_code}")
-                    logger.error(f"Error message: {response.text}")
-        
+                for future in as_completed(future_to_page):
+                    page_data = future.result()
+                    for event_data in page_data:
+                        all_rows.append({
+                            'ID': event_data.get('eventId', ''),
+                            'Event ID': event_data.get('event', ''),
+                            'Event Title': event_data.get('title', ''),
+                            'Start Day': event_data.get('start', ''),
+                            'End Day': event_data.get('end', ''),
+                            'Token': event_data.get('token', ''),
+                            'Chain': event_data.get('chain', ''),
+                            'Total Fund Token Amount': event_data.get('totalFundTokenAmount', 0),
+                            'Total Refund Amount': event_data.get('totalRefundAmount', 0),
+                            'Total User Reward': event_data.get('totalUserReward', 0),
+                            'Total Bot Refund': event_data.get('totalBotRefund', 0),
+                            'Percent': calculate_percentage(
+                                event_data.get('totalBotRefund', 0),
+                                event_data.get('totalFundTokenAmount', 0)
+                            )
+                        })
+
+                        token = event_data.get('token', '')
+                        token_summary[token]['Chain'] = event_data.get('chain', '')
+                        token_summary[token]['Total Fund Token Amount'] += event_data.get('totalFundTokenAmount', 0)
+                        token_summary[token]['Total Refund Amount'] += event_data.get('totalRefundAmount', 0)
+                        token_summary[token]['Total User Reward'] += event_data.get('totalUserReward', 0)
+                        token_summary[token]['Total Bot Refund'] += event_data.get('totalBotRefund', 0)
+
             if all_rows:
                 all_rows = sorted(all_rows, key=lambda x: x['ID'])
 
                 df_main = pd.DataFrame(all_rows)
                 file_name = f"refund_reward_{from_date}_{to_date}_pages_0_to_{max_page}.xlsx"
-                
+
                 token_summary_rows = [
                     {
                         '#': i + 1,
@@ -262,16 +272,17 @@ def export_refund_reward_to_excel(from_date, to_date):
                 with pd.ExcelWriter(file_name) as writer:
                     df_main.to_excel(writer, sheet_name='Refund Reward', index=False)
                     df_summary.to_excel(writer, sheet_name='Token Summary', index=False)
-                
+
                 logger.info(f"Data has been saved to {file_name}")
             else:
                 logger.warning("No data found for the entire range of pages.")
-                
+
         except Exception as e:
             logger.error(f"Error processing initial data: {str(e)}")
     else:
         logger.error(f"Failed to fetch initial data. Status code: {initial_response.status_code}")
         logger.error(f"Error message: {initial_response.text}")
+
 
 def export_winners_to_excel(from_date, to_date):
     all_rows = []
@@ -356,6 +367,20 @@ def export_winners_to_excel(from_date, to_date):
     else:
         logger.warning("No data found for the entire range of pages.")
 
+
+def fetch_user_do_quest_page_data(params):
+    try:
+        response = requests.get(USER_DO_QUEST_URL, params=params)
+        if response.status_code == 200:
+            return response.json().get('data', {}).get('data', [])
+        else:
+            logger.error(f"Failed to fetch data for page {params['page']}. Status code: {response.status_code}")
+            logger.error(f"Error message: {response.text}")
+            return []
+    except Exception as e:
+        logger.error(f"Exception occurred while fetching data for page {params['page']}: {str(e)}")
+        return []
+
 def export_user_do_quest_to_excel(event_configurations):
     all_rows = []
 
@@ -370,7 +395,7 @@ def export_user_do_quest_to_excel(event_configurations):
         if response.status_code == 200:
             data = response.json().get('data', {})
             count = data.get('count', 0)
-            max_page = (count // 100) + (1 if count % 100 > 0 else 0)
+            max_page = (count + 99) // 100  # Chia cho 100 và làm tròn lên để tính số trang
         else:
             logger.error(f"Failed to fetch initial data for event {event_id}. Status code: {response.status_code}")
             logger.error(f"Error message: {response.text}")
@@ -381,32 +406,26 @@ def export_user_do_quest_to_excel(event_configurations):
         bot_count = 0
         logger.info(f"Loading data from event {event_id} with {max_page} pages")
 
-        for page in range(max_page):
-            params.update({"page": page})
-            response = requests.get(USER_DO_QUEST_URL, params=params)
-            logger.info(f"Processing data page {page}")
-            if response.status_code == 200:
-                try:
-                    data = response.json().get('data', {})
-                    user_data = data.get('data', [])
-                    
-                    for user_entry in user_data:
-                        user_info = user_entry.get('user', {})
-                        if user_info.get('isBot', False):
-                            bot_count += 1
-                        else:
-                            real_user_count += 1
-                            if user_info.get('ic', 0) > 0:
-                                user_ic_count += 1
-                    
-                except Exception as e:
-                    logger.error(f"Error processing data for event {event_id}, page {page}: {str(e)}")
-            else:
-                logger.error(f"Failed to fetch data for event {event_id}, page {page}. Status code: {response.status_code}")
-                logger.error(f"Error message: {response.text}")
+        # Sử dụng ThreadPoolExecutor để xử lý song song
+        with ThreadPoolExecutor(max_workers=10) as executor:
+            future_to_page = {
+                executor.submit(fetch_user_do_quest_page_data, {**params, "page": page}): page for page in range(max_page)
+            }
+
+            for future in as_completed(future_to_page):
+                page_data = future.result()
+
+                for user_entry in page_data:
+                    user_info = user_entry.get('user', {})
+                    if user_info.get('isBot', False):
+                        bot_count += 1
+                    else:
+                        real_user_count += 1
+                        if user_info.get('ic', 0) > 0:
+                            user_ic_count += 1
 
         rate_user = real_user_count / (real_user_count + bot_count) if (real_user_count + bot_count) > 0 else 0
-        
+
         all_rows.append({
             'Event ID': event_id,
             'Total User': real_user_count + bot_count,
@@ -423,6 +442,7 @@ def export_user_do_quest_to_excel(event_configurations):
         logger.info(f"Data has been saved to {file_name}")    
     else:
         logger.warning("No data found for the given events.")
+
 
 def edit_manager_to_community(user, community, action):
     payload = {
@@ -656,16 +676,33 @@ def ask_user_action():
     config_input = tk.Text(root, height=5, width=40)
     config_input.pack(pady=10)
 
+    # Tạo Progress Bar
+    progress_bar = Progressbar(root, mode='indeterminate')
+    
     def on_submit():
+        # Hiển thị ProgressBar khi bắt đầu xử lý
+        progress_bar.pack(pady=10)
+        progress_bar.start()
+        
         config_data = config_input.get("1.0", tk.END).strip()
         global event_configurations
         event_configurations = []
         
         config_parts = config_data.split(',')
 
+        # Xác nhận trước khi thực hiện hành động quan trọng
+        if action.get() in [6, 7, 12]:
+            confirmation = messagebox.askyesno("Confirmation", "Are you sure you want to proceed with this action?")
+            if not confirmation:
+                progress_bar.stop()
+                progress_bar.pack_forget()
+                return
+
         if action.get() in [5, 9]:
             if len(config_parts) != 2:
                 messagebox.showerror("Input Error", "Please provide from, to in the format 'from, to'.")
+                progress_bar.stop()
+                progress_bar.pack_forget()
                 return
 
             from_date = config_parts[0].strip()
@@ -679,8 +716,12 @@ def ask_user_action():
         elif action.get() in [6, 7]:
             if len(config_parts) != 2:
                 messagebox.showerror("Input Error", "Please provide user and community in the format 'user, community'.")
+                progress_bar.stop()
+                progress_bar.pack_forget()
                 return
 
+            user = config_parts[0].strip()
+            community = config_parts[1].strip()
             user = config_parts[0].strip()
             community = config_parts[1].strip()
             action_type = "add" if action.get() == 6 else "delete"
@@ -689,6 +730,8 @@ def ask_user_action():
         elif action.get() == 8:
             if len(config_parts) != 2:
                 messagebox.showerror("Input Error", "Please provide user and event in the format 'user, event'.")
+                progress_bar.stop()
+                progress_bar.pack_forget()
                 return
 
             user = config_parts[0].strip()
@@ -698,6 +741,8 @@ def ask_user_action():
         elif action.get() == 12:
             if len(config_parts) != 4:
                 messagebox.showerror("Input Error", "Please provide event_id, amount, min, max in the format 'event_id, amount, min, max'.")
+                progress_bar.stop()
+                progress_bar.pack_forget()
                 return
 
             event_id = config_parts[0].strip()
@@ -729,6 +774,8 @@ def ask_user_action():
             else:
                 logger.error("Invalid action")
 
+        progress_bar.stop()
+        progress_bar.pack_forget()
         show_results()
         root.quit()
 
@@ -778,3 +825,4 @@ def show_results():
     result_window.mainloop()
 
 ask_user_action()
+

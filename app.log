@@ -15,3 +15,8 @@
 2024-08-28 19:34:26,640 - __main__ - ERROR - Failed to fetch data for page 0. Status code: 404
 2024-08-28 19:34:26,641 - __main__ - ERROR - Error message: {"success":false,"serverCode":1001,"message":"API not found","data":{}}
 2024-08-28 19:34:26,642 - __main__ - WARNING - No bot users found to update points.
+2024-08-29 16:08:54,053 - __main__ - INFO - Data has been saved to refund_reward_2024-05-01_2024-06-01_pages_0_to_3.xlsx
+2024-08-29 16:12:38,435 - __main__ - ERROR - Failed to fetch initial data for event 669f7e2446fa9806c6b839d9. Status code: 404
+2024-08-29 16:12:38,436 - __main__ - ERROR - Error message: {"success":false,"serverCode":1001,"message":"API not found","data":{}}
+2024-08-29 16:12:38,436 - __main__ - WARNING - No data found for the given events.
+2024-08-29 16:22:34,053 - __main__ - INFO - Data has been saved to refund_reward_2024-01-01_2024-05-01_pages_0_to_9.xlsx
