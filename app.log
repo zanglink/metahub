@@ -20,3 +20,18 @@
 2024-08-29 16:12:38,436 - __main__ - ERROR - Error message: {"success":false,"serverCode":1001,"message":"API not found","data":{}}
 2024-08-29 16:12:38,436 - __main__ - WARNING - No data found for the given events.
 2024-08-29 16:22:34,053 - __main__ - INFO - Data has been saved to refund_reward_2024-01-01_2024-05-01_pages_0_to_9.xlsx
+2024-08-29 21:09:33,303 - __main__ - INFO - Application started.
+2024-08-29 21:09:42,779 - __main__ - INFO - Application ended.
+2024-08-29 21:19:18,729 - __main__ - INFO - Application started.
+2024-08-29 21:19:20,570 - __main__ - INFO - Application ended.
+2024-08-29 21:20:59,585 - __main__ - INFO - Application started.
+2024-08-29 21:21:09,417 - __main__ - INFO - Application ended.
+2024-08-29 21:24:29,329 - __main__ - INFO - Application started.
+2024-08-29 21:25:00,898 - event_processor - ERROR - Error processing initial data: fetch_page_data() missing 1 required positional argument: 'params'
+2024-08-29 22:07:25,739 - __main__ - INFO - Application ended.
+2024-08-29 22:08:11,136 - __main__ - INFO - Application started.
+2024-08-29 22:08:37,353 - event_processor - INFO - Data has been saved to refund_reward_2024-01-01_2024-05-01_pages_0_to_9.xlsx
+2024-08-29 22:10:01,226 - api_manager - ERROR - Failed to fetch data for page 0. Status code: 404
+2024-08-29 22:10:01,227 - api_manager - ERROR - Error message: {"success":false,"serverCode":1001,"message":"API not found","data":{}}
+2024-08-29 22:10:01,228 - api_manager - WARNING - No bot users found to update points.
+2024-08-29 22:10:17,085 - __main__ - INFO - Application ended.
